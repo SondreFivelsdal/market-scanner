@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="nb">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>AI Crypto Analyst</title>
+<meta name="description" content="Teknisk analyse av BTC, XRP, POL og SAND – oppdateres automatisk.">
+<meta name="theme-color" content="#f7f6f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#171716" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Scanner">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23171716'/%3E%3Cpath d='M6 22l6-7 5 4 9-11' stroke='%2334c27a' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+:root {
+  color-scheme: light dark;
+  --color-bg: #f7f6f3; --color-panel: #ffffff; --color-fg: #1f1e1c; --color-fg-muted: #6b6963; --color-border-line: #e3e1dc;
+  --color-ok: #1a7f4b; --color-bad: #c2362c; --color-warn: #b26a00;
+  --c1: #2f6fde; --c2: #8a55d6; --c3: #0f9aa8;
+  --cds-chart-axis: #a9a6a0; --cds-chart-grid: #ecebe7; --cds-chart-muted: #9b9891; --cds-chart-reference: #c9c6c0;
+  --cds-surface-popover: #ffffff; --cds-border: #dddad4; --cds-text-secondary: #6b6963; --cds-shadow-popover: 0 6px 24px rgba(0,0,0,.12);
+  --cds-radius: 10px; --cds-pad-xs: 6px; --cds-pad-sm: 8px; --cds-pad-md: 14px; --cds-pad-lg: 20px; --cds-gap-sm: 8px; --cds-gap-md: 14px; --cds-gap-lg: 22px;
+  --cds-font-size-title: clamp(1.6rem, 4vw, 2.1rem); --cds-font-size-heading: 1.08rem; --cds-font-size-body: .95rem; --cds-font-size-caption: .82rem; --cds-font-weight-medium: 600; --cds-dur-slow: .4s;
+  --font-anthropic-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-anthropic-serif: ui-serif, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --color-bg: #171716; --color-panel: #21211f; --color-fg: #ecebe7; --color-fg-muted: #a3a19b; --color-border-line: #353431;
+  --color-ok: #3ccf86; --color-bad: #ff6b5e; --color-warn: #f0a63a;
+  --c1: #6ea0ff; --c2: #b38cff; --c3: #3fc6d3;
+  --cds-chart-axis: #6f6d68; --cds-chart-grid: #2c2b29; --cds-chart-muted: #8a8882; --cds-chart-reference: #4a4945;
+  --cds-surface-popover: #2a2a27; --cds-border: #3d3c39; --cds-text-secondary: #a3a19b; --cds-shadow-popover: 0 6px 24px rgba(0,0,0,.5);
+} }
+:root[data-theme="dark"] {
+  --color-bg: #171716; --color-panel: #21211f; --color-fg: #ecebe7; --color-fg-muted: #a3a19b; --color-border-line: #353431;
+  --color-ok: #3ccf86; --color-bad: #ff6b5e; --color-warn: #f0a63a;
+  --c1: #6ea0ff; --c2: #b38cff; --c3: #3fc6d3;
+  --cds-chart-axis: #6f6d68; --cds-chart-grid: #2c2b29; --cds-chart-muted: #8a8882; --cds-chart-reference: #4a4945;
+  --cds-surface-popover: #2a2a27; --cds-border: #3d3c39; --cds-text-secondary: #a3a19b; --cds-shadow-popover: 0 6px 24px rgba(0,0,0,.5);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--color-bg); color: var(--color-fg); font-family: var(--font-anthropic-sans); -webkit-text-size-adjust: 100%; }
+#dash-root { padding: 16px var(--dash-gutter, 16px) 48px; padding-top: max(16px, env(safe-area-inset-top)); overflow-x: hidden; }
+.dash-skeleton { position: relative; min-height: 120px; border-radius: var(--cds-radius); background: linear-gradient(90deg, var(--color-panel), var(--color-border-line), var(--color-panel)); background-size: 200% 100%; animation: sk 1.4s linear infinite; }
+@keyframes sk { to { background-position: -200% 0; } }
+p.dash-skeleton { min-height: 1.4em; }
+#ms-updated { margin-top: -2px; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script src="dash-shim.js"></script>
+</head>
+<body>
+<div id="dash-root">
+<style>
+#dash-root { --dash-gutter: clamp(12px, 3vw, 32px); }
+.ai [hidden] { display: none !important; }
+.ai-stack > .ai-pill { justify-self: start; }
+.ai { display: grid; gap: var(--cds-gap-lg); font-family: var(--font-anthropic-sans); max-width: 1280px; margin-inline: auto; min-width: 0; }
+.ai h1 { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; line-height: 1.15; }
+.ai h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; }
+.ai h3 { font-size: var(--cds-font-size-body); font-weight: var(--cds-font-weight-medium); margin: 0; }
+.ai p { margin: 0; line-height: 1.55; }
+.ai .ai-b, .ai b { font-weight: var(--cds-font-weight-medium); }
+.ai-muted { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.ai-cap { font-size: var(--cds-font-size-caption); }
+.ai-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: grid; gap: var(--cds-gap-md); align-content: start; min-width: 0; }
+.ai-row { display: flex; justify-content: space-between; align-items: center; gap: var(--cds-gap-sm); flex-wrap: wrap; }
+.ai-stack { display: grid; gap: var(--cds-gap-sm); min-width: 0; }
+.ai-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: var(--cds-gap-md); }
+.ai-grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: var(--cds-gap-md); }
+.ai-head { display: grid; gap: 6px; }
+.ai-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--color-border-line); position: sticky; top: 0; z-index: 3; background: var(--color-bg); padding-top: 4px; }
+.ai-tabs::-webkit-scrollbar { display: none; }
+.ai-tabs button { font: inherit; font-size: var(--cds-font-size-body); background: none; border: 0; border-bottom: 2px solid transparent; color: var(--color-fg-muted); padding: 10px 12px; cursor: pointer; white-space: nowrap; }
+.ai-tabs button[aria-selected="true"] { color: var(--color-fg); border-bottom-color: var(--color-fg); font-weight: var(--cds-font-weight-medium); }
+.ai-tabs button:focus-visible, .ai-seg button:focus-visible, .ai-btn:focus-visible, .ai-coincard:focus-visible, .ai-case:focus-visible { outline: 2px solid var(--cds-chart-axis); outline-offset: 2px; }
+.ai-seg { display: inline-flex; border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); overflow: hidden; flex-wrap: nowrap; max-width: 100%; }
+.ai-seg button { font: inherit; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); background: transparent; border: 0; padding: 7px 12px; cursor: pointer; white-space: nowrap; }
+.ai-seg button + button { border-left: 1px solid var(--color-border-line); }
+.ai-seg button[aria-pressed="true"] { color: var(--color-fg); background: var(--color-panel); font-weight: var(--cds-font-weight-medium); }
+.ai-coinbar { display: flex; gap: var(--cds-gap-sm); align-items: center; flex-wrap: wrap; }
+.ai-btn { font: inherit; font-size: var(--cds-font-size-caption); color: var(--color-fg); background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: 6px 10px; cursor: pointer; }
+.ai-btn:hover { border-color: var(--cds-chart-axis); }
+.ai-link { font: inherit; font-size: var(--cds-font-size-caption); background: none; border: 0; padding: 0; color: var(--color-fg-muted); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.ai-link:hover { color: var(--color-fg); }
+.ai-pill { display: inline-flex; align-items: center; gap: 6px; font-size: var(--cds-font-size-caption); font-weight: var(--cds-font-weight-medium); padding: 3px 10px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.ai-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.st-buy { color: var(--color-ok); } .st-sell { color: var(--color-bad); } .st-wait { color: var(--color-warn); } .st-none { color: var(--color-fg-muted); }
+.ai-pos { color: var(--color-ok); } .ai-neg { color: var(--color-bad); } .ai-warn { color: var(--color-warn); } .ai-neu { color: var(--color-fg-muted); }
+.ai-big { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.ai-num { font-variant-numeric: tabular-nums; }
+.ai-kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; margin: 0; }
+.ai-kv dt { color: var(--color-fg-muted); } .ai-kv dd { margin: 0; text-align: right; }
+.ai-coincard { cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.ai-coincard:hover { border-color: var(--cds-chart-axis); }
+.ai-spark { height: 56px; position: relative; }
+.ai-bar { position: relative; height: 8px; border-radius: 4px; background: var(--color-border-line); overflow: hidden; }
+.ai-bar i { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 4px; }
+.ai-scorebar { position: relative; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--color-bad), var(--color-border-line) 50%, var(--color-ok)); }
+.ai-scorebar i { position: absolute; top: -4px; width: 4px; height: 16px; border-radius: 2px; background: var(--color-fg); transform: translateX(-2px); }
+.ai-summary { border-left: 3px solid var(--color-fg); padding-left: var(--cds-pad-md); font-size: var(--cds-font-size-body); line-height: 1.6; }
+.ai-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.ai-chip { display: inline-flex; gap: 6px; align-items: center; font-size: var(--cds-font-size-caption); padding: 4px 10px; border-radius: 999px; background: var(--color-bg); border: 1px solid var(--color-border-line); white-space: nowrap; }
+.ai-toggle { font: inherit; font-size: var(--cds-font-size-caption); padding: 5px 10px; border-radius: 999px; background: transparent; border: 1px solid var(--color-border-line); color: var(--color-fg-muted); cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.ai-toggle[aria-pressed="true"] { color: var(--color-fg); background: var(--color-bg); border-color: var(--cds-chart-axis); }
+.ai-toggle i { width: 12px; height: 0; border-top: 2px solid currentColor; display: inline-block; }
+.ai-chart { position: relative; min-height: 320px; touch-action: pan-y; }
+.ai-osc { position: relative; min-height: 130px; touch-action: pan-y; }
+.ai-fan { position: relative; min-height: 300px; touch-action: pan-y; }
+.ai-mini { position: relative; height: 110px; }
+.ai-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); white-space: nowrap; font-variant-numeric: tabular-nums; z-index: 2; line-height: 1.5; }
+.ai-tip .d { color: var(--cds-text-secondary); }
+.ai-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--cds-font-size-caption); }
+.ai-checks li { display: grid; grid-template-columns: 1.3em 1fr; gap: 6px; line-height: 1.45; }
+.ai-checks .y { color: var(--color-ok); } .ai-checks .n { color: var(--color-fg-muted); }
+.ai-scen { border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-md); display: grid; gap: var(--cds-gap-sm); align-content: start; background: var(--color-bg); min-width: 0; }
+.ai-scen.on { border-color: var(--color-fg); box-shadow: inset 0 0 0 1px var(--color-fg); }
+.ai-scen h4 { margin: 0; font-size: var(--cds-font-size-caption); font-weight: var(--cds-font-weight-medium); color: var(--color-fg-muted); text-transform: uppercase; letter-spacing: .04em; }
+.ai-list { margin: 0; padding-left: 1.1em; display: grid; gap: 4px; font-size: var(--cds-font-size-caption); line-height: 1.45; }
+.ai-explain { display: grid; gap: var(--cds-gap-md); }
+.ai-explain section { display: grid; gap: 4px; }
+.ai-comp { display: grid; grid-template-columns: minmax(7rem, 9rem) 1fr 3.2rem; gap: 10px; align-items: center; font-size: var(--cds-font-size-caption); }
+.ai-comp .bar { position: relative; height: 10px; background: var(--color-border-line); border-radius: 5px; }
+.ai-comp .bar::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--cds-chart-axis); }
+.ai-comp .bar i { position: absolute; top: 0; bottom: 0; border-radius: 5px; }
+.ai-comptext { grid-column: 1 / -1; color: var(--color-fg-muted); margin-top: -4px; line-height: 1.45; }
+@media (max-width: 520px) { .ai-comp { grid-template-columns: 6.5rem 1fr 2.6rem; } }
+.ai-tablewrap { overflow-x: auto; }
+.ai-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: var(--cds-font-size-caption); }
+.ai-table th { text-align: right; color: var(--color-fg-muted); font-weight: var(--cds-font-weight-medium); padding: 7px 8px; border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+.ai-table td { padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--color-border-line); white-space: nowrap; vertical-align: top; }
+.ai-table .l { text-align: left; }
+.ai-table td.wrap { white-space: normal; min-width: 12rem; color: var(--color-fg-muted); }
+.ai-table tr.hl td { background: var(--color-bg); }
+.ai-cases { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: var(--cds-gap-md); }
+.ai-case { text-align: left; font: inherit; color: inherit; cursor: pointer; background: var(--color-bg); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-md); display: grid; gap: 8px; align-content: start; min-width: 0; }
+.ai-case[aria-pressed="true"] { border-color: var(--color-fg); box-shadow: inset 0 0 0 1px var(--color-fg); }
+.ai-warnbox { border: 1px solid var(--color-warn); border-radius: var(--cds-radius); padding: var(--cds-pad-sm) var(--cds-pad-md); font-size: var(--cds-font-size-caption); line-height: 1.5; }
+.ai-legend { display: flex; gap: var(--cds-gap-md); flex-wrap: wrap; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.ai-gchart { min-height: 280px; }
+.ai-steps { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; font-size: var(--cds-font-size-caption); line-height: 1.5; }
+.ai-guide > div { align-content: start; gap: 8px; }
+.ai-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ai-legend i { width: 16px; height: 0; border-top: 2px solid; display: inline-block; }
+.ai-legend .sw { width: 12px; height: 10px; border: 0; border-radius: 2px; }
+details.ai-more > summary { cursor: pointer; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); list-style: none; display: inline-flex; gap: 6px; align-items: center; }
+details.ai-more > summary::-webkit-details-marker { display: none; }
+details.ai-more > summary::before { content: "▸"; } details.ai-more[open] > summary::before { content: "▾"; }
+details.ai-more[open] > summary { margin-bottom: var(--cds-gap-sm); }
+.ai-modal { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.45); display: flex; align-items: flex-end; justify-content: center; padding: 12px; }
+.ai-modal[hidden] { display: none; }
+.ai-dialog { background: var(--color-panel); color: var(--color-fg); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); max-width: 640px; width: 100%; max-height: min(86vh, 900px); overflow: auto; padding: var(--cds-pad-lg); display: grid; gap: var(--cds-gap-md); box-shadow: var(--cds-shadow-popover); }
+@media (min-width: 700px) { .ai-modal { align-items: center; } }
+.ai-dialog section { display: grid; gap: 4px; }
+.ai-dialog h4 { margin: 0; font-size: var(--cds-font-size-caption); font-weight: var(--cds-font-weight-medium); color: var(--color-fg-muted); text-transform: uppercase; letter-spacing: .04em; }
+.ai-why { font: inherit; font-size: 11px; line-height: 1; padding: 3px 7px; border-radius: 999px; border: 1px solid var(--color-border-line); background: var(--color-bg); color: var(--color-fg-muted); cursor: pointer; vertical-align: middle; }
+.ai-why:hover { color: var(--color-fg); border-color: var(--cds-chart-axis); }
+.ai-fail { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); min-height: inherit; }
+.ai-fail::before { content: ""; width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-bad); }
+@media (max-width: 640px) { .ai-hide-sm { display: none; } .ai-card { padding: var(--cds-pad-md); } }
+</style>
+
+<div class="ai" id="app">
+  <header class="ai-head" id="topp">
+    <h1>AI Crypto Analyst</h1>
+    <p id="ai-takeaway" class="dash-skeleton">—</p>
+    <p class="ai-muted"><span id="ai-asof">—</span> · Teknisk analyse av Binance-kurser for Bitcoin, XRP, Polygon og The Sandbox. Statusene er regelbaserte vurderinger, ikke kjøps- eller salgsordre. Ikke finansiell rådgivning.</p>
+    <p class="ai-muted" id="ms-updated"></p>
+  </header>
+
+  <nav class="ai-tabs" role="tablist" aria-label="Sider" id="faner">
+    <button role="tab" data-tab="oversikt" id="tab-oversikt">Oversikt</button>
+    <button role="tab" data-tab="teknisk" id="tab-teknisk">Teknisk analyse</button>
+    <button role="tab" data-tab="historikk" id="tab-historikk">Historiske scenarioer</button>
+    <button role="tab" data-tab="signaler" id="tab-signaler">Signalhistorikk</button>
+    <button role="tab" data-tab="avansert" id="tab-avansert">Avanserte data</button>
+  </nav>
+
+  <div class="ai-coinbar" id="coinvelger" hidden>
+    <div class="ai-seg" role="group" aria-label="Velg coin" id="coin-seg"></div>
+    <span class="ai-muted" id="coin-sub"></span>
+  </div>
+
+  <section class="ai-page" id="oversikt" role="tabpanel" aria-labelledby="tab-oversikt">
+    <div class="ai-card" id="guide">
+      <div class="ai-row"><div class="ai-stack" style="gap:4px"><h2>Slik leser du kjøps- og salgssignalene</h2><span class="ai-muted">WaveTrend-signaler tegnet på prisen siste 180 dager, sammen med nivåene for <b id="g-name">–</b></span></div><div class="ai-seg" id="g-coins" role="group" aria-label="Velg coin for signalgrafen"></div></div>
+      <div class="ai-legend">
+        <span><b class="ai-pos">▲</b> Kjøpssignal (WaveTrend snur opp under −53)</span>
+        <span><b class="ai-neg">▼</b> Salgssignal (WaveTrend snur ned over +53)</span>
+        <span><i style="color:var(--color-ok);border-top-style:dashed"></i> Må holde (støtte)</span>
+        <span><i style="color:var(--color-bad);border-top-style:dashed"></i> Neste motstand</span>
+        <span><i class="sw" style="background:var(--color-ok);opacity:.3"></i> Kjøpssone</span>
+        <span><i style="color:var(--color-bad);border-top-style:dotted"></i> Stopp</span>
+      </div>
+      <div class="ai-chart ai-gchart" id="g-chart"></div>
+      <p class="ai-cap" id="g-last"></p>
+      <div class="ai-grid3 ai-guide">
+        <div class="ai-stack"><h3>1. Signalene</h3>
+          <p class="ai-cap"><b class="ai-pos">Grønn ▲</b> betyr at WaveTrend har snudd opp fra oversolgt nivå: salgspresset avtar, og en bunn kan være nær. <b class="ai-neg">Rød ▼</b> betyr at den har snudd ned fra overkjøpt nivå, og at en topp kan være nær.</p>
+          <p class="ai-muted" id="g-edge"></p></div>
+        <div class="ai-stack"><h3>2. Nivåene</h3>
+          <p class="ai-cap"><b class="ai-pos">Må holde</b> er nærmeste sterke støtte, der kjøpere historisk har kommet inn. <b class="ai-neg">Neste motstand</b> er første sted prisen ofte stopper eller snur. <b>Kjøpssonen</b> ligger rett over støtten, og <b class="ai-neg">stopp</b> ligger under den. 200-dagers snitt (EMA 200) skiller opptrend fra nedtrend.</p>
+          <p class="ai-muted">Et brudd regnes som bekreftet etter to dagslukk på andre siden av nivået.</p></div>
+        <div class="ai-stack"><h3>3. Slik kan du bruke det</h3>
+          <ol class="ai-steps">
+            <li><b>Sjekk retningen først.</b> Over EMA 200 med positiv trend: se etter kjøp. I nedtrend: korte trades og små posisjoner.</li>
+            <li><b>Kjøp nær støtte, ikke midt i bevegelsen.</b> Best: grønt signal mens prisen er i kjøpssonen ved «Må holde».</li>
+            <li><b>Sett stopp under støtten.</b> Lukker prisen under stopp-linjen, var oppsettet feil.</li>
+            <li><b>Ta gevinst ved motstand.</b> Selg deler ved «Neste motstand». Et rødt signal der er et tegn til å ta gevinst.</li>
+            <li><b>Utbrudd:</b> to dagslukk over motstand kan være et nytt kjøpspunkt – gammel motstand blir ny støtte.</li>
+          </ol></div>
+      </div>
+      <p class="ai-muted">Signalene alene er svake (se Signalhistorikk). Bruk dem sammen med nivåene, trenden og statusen under. Ikke finansiell rådgivning.</p>
+    </div>
+    <div class="ai-grid3" id="ov-cards"></div>
+    <div class="ai-card" id="ov-legend">
+      <div class="ai-row"><h2>Slik leser du statusene</h2><span class="ai-muted">Regelbasert og forklarbar – ikke ordre eller garantier</span></div>
+      <div class="ai-grid2" id="ov-legend-body"></div>
+    </div>
+  </section>
+
+  <section class="ai-page" id="teknisk" role="tabpanel" aria-labelledby="tab-teknisk" hidden>
+    <div class="ai-stack">
+      <div class="ai-card" id="ta-now"></div>
+      <div class="ai-card" id="ta-chartcard">
+        <div class="ai-row"><h2 id="ta-charttitle">Prisgraf</h2><div class="ai-seg" role="group" aria-label="Periode" id="ta-range"></div></div>
+        <div class="ai-chips" id="ta-toggles" role="group" aria-label="Vis i grafen"></div>
+        <div class="ai-chart" id="ta-chart"></div>
+        <div class="ai-row"><div class="ai-seg" role="group" aria-label="Indikator under grafen" id="ta-osc-seg"></div><span class="ai-muted" id="ta-osc-note"></span></div>
+        <div class="ai-osc" id="ta-osc"></div>
+        <div class="ai-legend" id="ta-legend"></div>
+      </div>
+      <div class="ai-card" id="ta-watch">
+        <div class="ai-row"><h2>Hva bør jeg følge med på?</h2><span class="ai-muted">Tre scenarioer – den gjeldende er markert</span></div>
+        <div class="ai-grid3" id="ta-scen"></div>
+      </div>
+      <div class="ai-grid2">
+        <div class="ai-card" id="ta-explain"></div>
+        <div class="ai-card" id="ta-score"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="ai-page" id="historikk" role="tabpanel" aria-labelledby="tab-historikk" hidden>
+    <div class="ai-stack">
+      <div class="ai-card" id="hs-summary"></div>
+      <div class="ai-card" id="hs-fancard">
+        <div><h2>Dagens utvikling mot lignende historiske forløp</h2><p class="ai-muted">Prisen normalisert til 0 % ved signaldagen. Båndene viser spredningen i hva som skjedde de neste 30 dagene – ikke en prognose.</p></div>
+        <div class="ai-fan" id="hs-fan"></div>
+        <div class="ai-legend" id="hs-fan-legend"></div>
+      </div>
+      <div class="ai-card" id="hs-stats"></div>
+      <div class="ai-card" id="hs-casescard">
+        <div><h2>Hva skjedde sist markedet så slik ut?</h2><p class="ai-muted">De fem mest like historiske situasjonene. Trykk på et tilfelle for å sammenligne med i dag.</p></div>
+        <div class="ai-cases" id="hs-cases"></div>
+        <div class="ai-card" id="hs-compare" hidden></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="ai-page" id="signaler" role="tabpanel" aria-labelledby="tab-signaler" hidden>
+    <div class="ai-stack">
+      <div class="ai-card" id="sg-stats"></div>
+      <div class="ai-card" id="sg-recent"></div>
+    </div>
+  </section>
+
+  <section class="ai-page" id="avansert" role="tabpanel" aria-labelledby="tab-avansert" hidden>
+    <div class="ai-stack" id="av-body"></div>
+  </section>
+
+  <div class="ai-modal" id="hvorfor" hidden role="dialog" aria-modal="true" aria-labelledby="why-title">
+    <div class="ai-dialog" id="why-body"></div>
+  </div>
+</div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

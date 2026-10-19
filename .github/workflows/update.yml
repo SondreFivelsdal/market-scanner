@@ -1,0 +1,47 @@
+name: Oppdater scanner
+
+on:
+  schedule:
+    - cron: '3,18,33,48 * * * *'   # hvert 15. minutt (UTC); bygger bare når en ny 4t-candle er lukket
+  workflow_dispatch:                # «Run workflow»-knappen: bygger alltid
+  push:
+    branches: [main]
+    paths: ['engine.js', 'scripts/**', 'site/**', '.github/workflows/**']
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: scanner
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Hent data og kjør analyse
+        id: build
+        run: node scripts/update.js
+        env:
+          PAGES_URL: https://sondrefivelsdal.github.io/market-scanner/
+          NTFY_TOPIC: msc-6d2f0a04f4c8
+          FORCE: ${{ github.event_name != 'schedule' && '1' || '0' }}
+      - if: steps.build.outputs.deploy == 'true'
+        uses: actions/configure-pages@v5
+      - if: steps.build.outputs.deploy == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - if: steps.build.outputs.deploy == 'true'
+        id: deploy
+        uses: actions/deploy-pages@v4
