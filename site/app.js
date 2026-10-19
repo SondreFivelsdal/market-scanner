@@ -466,39 +466,81 @@
     row('Bitcoin i de samme periodene (median 30 d)', pct(s.btc30));
     box.replaceChildren(el('h2', null, 'Historiske resultater'), el('p', 'ai-muted', 'Avkastning fra dagslukk på signaldagen. «Andel positive» er andelen tilfeller med høyere pris; intervallet tar hensyn til at tilfellene ikke er helt uavhengige.'), tw, kv);
   }
+  const qnt = (arr, q) => { const a = arr.filter(v => v != null && isFinite(v)).sort((x, y) => x - y); if (!a.length) return null; const p = (a.length - 1) * q, lo = Math.floor(p), hi = Math.ceil(p); return a[lo] + (a[hi] - a[lo]) * (p - lo); };
   function drawFan(c) {
     const box = document.getElementById('hs-fan'); box.querySelector('svg')?.remove(); box.querySelector('.ai-tip')?.remove(); const an = c.analog; if (!an || !an.ok) return;
-    const W = Math.max(300, box.clientWidth), H = W < 600 ? 260 : 320; box.style.minHeight = H + 'px';
+    const mode = state.fanMode || 'kurs', P0 = c.price, toP = v => P0 * (1 + v / 100), k = c.keys || {};
+    const ms = document.getElementById('hs-fan-mode');
+    ms.replaceChildren(...[['kurs', 'Kurs'], ['pct', 'Prosent']].map(([m, lab]) => { const b = el('button', null, lab); b.type = 'button'; b.setAttribute('aria-pressed', mode === m ? 'true' : 'false'); b.addEventListener('click', () => { state.fanMode = m; drawFan(c); }); return b; }));
+    const W = Math.max(300, box.clientWidth), H = W < 600 ? 280 : 340; box.style.minHeight = H + 'px';
     const today = an.today.map((v, i, a) => ({ j: i - (a.length - 1), v: (v - 1) * 100 }));
     const fan = an.fan.map(f => ({ j: f.j, q10: (f.q10 - 1) * 100, q25: (f.q25 - 1) * 100, q50: (f.q50 - 1) * 100, q75: (f.q75 - 1) * 100, q90: (f.q90 - 1) * 100 }));
     const pre = an.preFan.map(f => ({ j: f.j, v: f.q50 == null ? null : (f.q50 - 1) * 100 }));
     const all = [...today.map(d => d.v), ...fan.flatMap(f => [f.q10, f.q90]), ...pre.map(d => d.v)].filter(v => v != null && isFinite(v));
-    const lo = Math.min(...all), hi = Math.max(...all), pad = (hi - lo) * 0.06;
-    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img').attr('aria-label', 'Dagens prisutvikling og spredningen i lignende historiske forløp');
-    const y = d3.scaleLinear([lo - pad, hi + pad], [H - 26, 10]).nice(); const ty = y.ticks(6);
-    const m = { l: measure(svg, ty.map(v => pct(v, 0))) + 12, r: 24 };
+    let lo = Math.min(...all), hi = Math.max(...all);
+    // nøkkelnivåer som ligger i nærheten tas med i grafen
+    const lvls = [[k.nextUp, 'Neste motstand', 'var(--color-bad)'], [k.majUp, 'Avgjørende motstand', 'var(--color-bad)'], [k.mustHold, 'Må holde', 'var(--color-ok)'], [k.majDn, 'Avgjørende støtte', 'var(--color-ok)']]
+      .filter(([l]) => l && l.d != null && l.d > lo - (hi - lo) * 0.25 && l.d < hi + (hi - lo) * 0.25);
+    const seenL = new Set(); const lv = lvls.filter(([l]) => { const key = Math.round(l.d * 10); if (seenL.has(key)) return false; seenL.add(key); return true; });
+    lv.forEach(([l]) => { lo = Math.min(lo, l.d); hi = Math.max(hi, l.d); });
+    const pad = (hi - lo) * 0.06;
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img').attr('aria-label', 'Dagens kurs og mulig kursbane basert på lignende historiske forløp');
+    const y = d3.scaleLinear([lo - pad, hi + pad], [H - 26, 10]);
+    let ty, fmt;
+    if (mode === 'kurs') { const yp = d3.scaleLinear([toP(lo - pad), toP(hi + pad)], [0, 1]); ty = yp.ticks(6).map(p => (p / P0 - 1) * 100); fmt = v => price(toP(v)); }
+    else { y.nice(); ty = y.ticks(6); fmt = v => pct(v, 0); }
+    const m = { l: measure(svg, ty.map(fmt)) + 12, r: 24 };
     const x = d3.scaleLinear([-60, 30], [m.l, W - m.r]);
     svg.append('g').selectAll('line').data(ty).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
-    const ya = svg.append('g').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).tickValues(ty).tickFormat(v => pct(v, 0)).tickSize(0)); ya.select('.domain').remove(); axisStyle(ya);
+    const ya = svg.append('g').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).tickValues(ty).tickFormat(fmt).tickSize(0)); ya.select('.domain').remove(); axisStyle(ya);
     const xa = svg.append('g').attr('transform', `translate(0,${H - 26})`).call(d3.axisBottom(x).tickValues(W < 600 ? [-60, -30, 0, 30] : [-60, -30, 0, 10, 20, 30]).tickFormat(v => v === 0 ? 'I dag' : (v > 0 ? '+' : '−') + Math.abs(v) + ' d').tickSizeOuter(0)); xa.select('.domain').attr('stroke', 'var(--cds-chart-axis)'); axisStyle(xa);
     svg.append('rect').attr('x', x(0)).attr('width', x(30) - x(0)).attr('y', 10).attr('height', H - 36).attr('fill', 'var(--color-bg)');
     svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(0)).attr('y2', y(0)).attr('stroke', 'var(--cds-chart-axis)');
+    const lvLab = [];
+    lv.forEach(([l, lab, col]) => { svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(l.d)).attr('y2', y(l.d)).attr('stroke', col).attr('stroke-width', 1.2).attr('stroke-dasharray', '6 4').attr('opacity', 0.8); lvLab.push({ y: y(l.d) - 4, col, t: `${lab} ${price(l.p)}` }); });
+    lvLab.sort((a, b) => a.y - b.y); for (let i = 1; i < lvLab.length; i++) if (lvLab[i].y - lvLab[i - 1].y < 15) lvLab[i].y = lvLab[i - 1].y + 15;
     svg.append('path').datum(fan).attr('d', d3.area().x(d => x(d.j)).y0(d => y(d.q10)).y1(d => y(d.q90))).attr('fill', dash.colors[0]).attr('fill-opacity', 0.12);
     svg.append('path').datum(fan).attr('d', d3.area().x(d => x(d.j)).y0(d => y(d.q25)).y1(d => y(d.q75))).attr('fill', dash.colors[0]).attr('fill-opacity', 0.22);
     svg.append('path').datum(fan).attr('d', d3.line().x(d => x(d.j)).y(d => y(d.q50))).attr('fill', 'none').attr('stroke', dash.colors[0]).attr('stroke-width', 2).attr('stroke-dasharray', '5 3');
     svg.append('path').datum(pre.filter(d => d.v != null)).attr('d', d3.line().x(d => x(d.j)).y(d => y(d.v))).attr('fill', 'none').attr('stroke', 'var(--cds-chart-muted)').attr('stroke-width', 1.5).attr('stroke-dasharray', '5 3');
     svg.append('path').datum(today).attr('d', d3.line().x(d => x(d.j)).y(d => y(d.v))).attr('fill', 'none').attr('stroke', 'var(--color-fg)').attr('stroke-width', 2.2).attr('stroke-linejoin', 'round');
     svg.append('circle').attr('cx', x(0)).attr('cy', y(0)).attr('r', 4).attr('fill', 'var(--color-fg)');
-    const lf = fan[fan.length - 1]; [['q50', 'Median'], ['q90', '90. pers.'], ['q10', '10. pers.']].forEach(([k, lab]) => svg.append('text').attr('x', x(30) - 4).attr('y', y(lf[k]) - 5).attr('text-anchor', 'end').attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg-muted)').attr('paint-order', 'stroke').attr('stroke', 'var(--color-panel)').attr('stroke-width', 3).text(`${lab} ${pct(lf[k], 0)}`));
-    const tip = tipOf(box);
+    lvLab.forEach(L => svg.append('text').attr('x', m.l + 4).attr('y', L.y).attr('font-size', 'var(--cds-font-size-caption)').attr('fill', L.col).attr('paint-order', 'stroke').attr('stroke', 'var(--color-panel)').attr('stroke-width', 4).attr('stroke-linejoin', 'round').text(L.t));
+    const lf = fan[fan.length - 1]; const ends = [['q90', 'Høy'], ['q50', 'Median'], ['q10', 'Lav']].map(([kk, lab]) => ({ y: y(lf[kk]) - 5, t: mode === 'kurs' ? `${lab} ${price(toP(lf[kk]))}` : `${lab} ${pct(lf[kk], 0)}` }));
+    for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 14) ends[i].y = ends[i - 1].y + 14;
+    ends.forEach(e => svg.append('text').attr('x', x(30) - 4).attr('y', e.y).attr('text-anchor', 'end').attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg-muted)').attr('paint-order', 'stroke').attr('stroke', 'var(--color-panel)').attr('stroke-width', 3).text(e.t));
+    const tip = tipOf(box); const both = v => `${price(toP(v))} (${pct(v)})`;
     svg.append('rect').attr('x', m.l).attr('y', 0).attr('width', W - m.l - m.r).attr('height', H).attr('fill', 'transparent')
-      .on('pointermove', ev => { const [px] = d3.pointer(ev); const j = Math.round(x.invert(px)); const lines = [el('div', 'd', j === 0 ? 'I dag' : (j > 0 ? `+${j} dager` : `${j} dager`))];
-        if (j <= 0) { const t = today.find(d => d.j === j); const p = pre.find(d => d.j === j); if (t) lines.push(el('div', null, `I dag-forløpet: ${pct(t.v)}`)); if (p && p.v != null) lines.push(el('div', 'ai-muted', `Median lignende tilfeller: ${pct(p.v)}`)); }
-        else { const f = fan.find(d => d.j === j); if (f) lines.push(el('div', null, `Median ${pct(f.q50)}`), el('div', 'ai-muted', `Midterste halvdel ${pct(f.q25)} til ${pct(f.q75)}`), el('div', 'ai-muted', `80 % av tilfellene ${pct(f.q10)} til ${pct(f.q90)}`)); }
+      .on('pointermove', ev => { const [px] = d3.pointer(ev); const j = Math.round(x.invert(px)); const lines = [el('div', 'd', j === 0 ? 'I dag' : (j > 0 ? `Om ${j} dager` : `${-j} dager siden`))];
+        if (j <= 0) { const t = today.find(d => d.j === j); const p = pre.find(d => d.j === j); if (t) lines.push(el('div', null, `Kurs: ${both(t.v)}`)); if (p && p.v != null) lines.push(el('div', 'ai-muted', `Median i lignende tilfeller: ${pct(p.v)}`)); }
+        else { const f = fan.find(d => d.j === j); if (f) lines.push(el('div', null, `Median ${both(f.q50)}`), el('div', 'ai-muted', `Halvparten mellom ${price(toP(f.q25))} og ${price(toP(f.q75))}`), el('div', 'ai-muted', `8 av 10 mellom ${price(toP(f.q10))} og ${price(toP(f.q90))}`)); }
         tip.replaceChildren(...lines); const kx = box.clientWidth / W; place(box, tip, x(j) * kx, 60); })
       .on('pointerleave', () => { tip.hidden = true; });
     const lg = document.getElementById('hs-fan-legend'); const it = (sty, txt) => { const s = el('span'); const i = el('i'); Object.assign(i.style, sty); s.append(i, document.createTextNode(txt)); return s; };
-    lg.replaceChildren(it({ color: 'var(--color-fg)' }, `${NAMES[c.sym]} siste 60 dager`), it({ color: 'var(--cds-chart-muted)', borderTopStyle: 'dashed' }, 'Median før signal i lignende tilfeller'), it({ color: dash.colors[0], borderTopStyle: 'dashed' }, 'Median etter'), it({ background: dash.colors[0], opacity: '.3', height: '10px', border: '0' }, 'Spredning (25–75 % og 10–90 %)'));
+    lg.replaceChildren(it({ color: 'var(--color-fg)' }, `${NAMES[c.sym]} siste 60 dager`), it({ color: 'var(--cds-chart-muted)', borderTopStyle: 'dashed' }, 'Median før, lignende tilfeller'), it({ color: dash.colors[0], borderTopStyle: 'dashed' }, 'Median videre'), it({ background: dash.colors[0], opacity: '.3', height: '10px', border: '0' }, 'Halvparten / 8 av 10 tilfeller'));
+  }
+  function renderProjection(c) {
+    const box = document.getElementById('hs-proj'); const an = c.analog; if (!an || !an.ok || !an.cases.length) { box.replaceChildren(); return; }
+    const P0 = c.price, cs = an.cases, k = c.keys || {}, n = cs.length;
+    const row = H => { const v = cs.map(x => x.post[H]).filter(x => x != null); return { H, q10: qnt(v, 0.1), q25: qnt(v, 0.25), q50: qnt(v, 0.5), q75: qnt(v, 0.75), q90: qnt(v, 0.9) }; };
+    const R = [7, 14, 30].map(row), r30 = R[2];
+    const up = cs.map(x => x.up30), dn = cs.map(x => x.dn30);
+    const topMed = qnt(up, 0.5), botMed = qnt(dn, 0.5);
+    const lead = el('p', 'ai-summary', `Hvis ${NAMES[c.sym]} utvikler seg som de ${n} lignende tilfellene, ender kursen om 30 dager typisk mellom ${price(P0 * r30.q25)} og ${price(P0 * r30.q75)} (median ${price(P0 * r30.q50)}, ${pct((r30.q50 - 1) * 100)}). Underveis var den høyeste kursen typisk ${price(P0 * (1 + topMed / 100))} (${pct(topMed)}) og den laveste ${price(P0 * (1 + botMed / 100))} (${pct(botMed)}).`);
+    const tw = el('div', 'ai-tablewrap'); const tb = el('table', 'ai-table'); const hr = el('tr');
+    tb.classList.add('ai-proj');
+    ['Om', 'Median', 'Halvparten mellom', '8 av 10 mellom'].forEach((h, i) => hr.append(el('th', i ? null : 'l', h))); const th = el('thead'); th.append(hr); tb.append(th);
+    const bd = el('tbody'); const cell = r => price(P0 * r), cp = v => price(P0 * (1 + v / 100));
+    R.forEach(r => { const tr = el('tr'); tr.append(el('td', 'l', `${r.H} dager`), el('td', sgnCls(r.q50 - 1), `${cell(r.q50)} (${pct((r.q50 - 1) * 100)})`), el('td', null, `${cell(r.q25)}–${cell(r.q75)}`), el('td', null, `${cell(r.q10)}–${cell(r.q90)}`)); bd.append(tr); });
+    [['Høyeste underveis', up, 'ai-pos'], ['Laveste underveis', dn, 'ai-neg']].forEach(([lab, v, cls]) => { const md = qnt(v, 0.5); const tr = el('tr'); tr.append(el('td', 'l', lab), el('td', cls, `${cp(md)} (${pct(md)})`), el('td', null, `${cp(qnt(v, 0.25))}–${cp(qnt(v, 0.75))}`), el('td', null, `${cp(qnt(v, 0.1))}–${cp(qnt(v, 0.9))}`)); bd.append(tr); });
+    tb.append(bd); tw.append(tb);
+    // hvor ofte ble nøkkelnivåene nådd innen 30 dager i de lignende tilfellene
+    const reach = [[k.nextUp, 'Neste motstand', 1], [k.majUp, 'Avgjørende motstand', 1], [k.mustHold, 'Må holde (støtte)', -1], [k.majDn, 'Avgjørende støtte', -1]]
+      .filter(([l]) => l && l.d != null).filter(([l], i, a) => a.findIndex(([m]) => m.p === l.p) === i)
+      .map(([l, lab, dir]) => ({ lab, l, dir, share: (dir > 0 ? up.filter(v => v >= l.d) : dn.filter(v => v <= l.d)).length / n }));
+    const ul = el('ul', 'ai-list'); reach.forEach(r => { const li = el('li'); li.append(el('b', r.dir > 0 ? 'ai-pos' : 'ai-neg', `${r.lab} ${price(r.l.p)} (${pct(r.l.d)})`), document.createTextNode(`: nådd innen 30 dager i ${Math.round(r.share * 100)} % av de lignende tilfellene (${Math.round(r.share * n)} av ${n}).`)); ul.append(li); });
+    const warn = an.reliability !== 'ok' ? el('div', 'ai-warnbox', `Utvalget er ${an.reliability === 'for-lite' ? 'for lite' : 'lite'} (ca. ${an.nEff} uavhengige perioder), så tallene er usikre.`) : null;
+    box.replaceChildren(...[el('h3', null, 'Hvor høyt eller lavt kan det gå?'), lead, warn, tw, el('h3', null, 'Ble nivåene nådd?'), ul, el('p', 'ai-muted', `Basert på hva som faktisk skjedde etter de ${n} mest like situasjonene i historikken (BTC, XRP, POL og SAND), regnet fra dagens kurs ${price(P0)}. «8 av 10 mellom» er 10.–90. persentil. Historien gjentar seg ikke nøyaktig – bruk dette som et bilde av spredningen, ikke som en prognose.`)].filter(Boolean));
   }
   function miniPath(box, cs, today, opt = {}) {
     box.replaceChildren(); const W = Math.max(200, box.clientWidth || 240), H = opt.h || 110; box.style.height = H + 'px';
@@ -554,7 +596,7 @@
     box.replaceChildren(h, ch, lg, el('p', 'ai-cap', caseText(cs)), tw);
     requestAnimationFrame(() => miniPath(ch, cs, an.today, { h: 240, axis: true }));
   }
-  function renderHist() { const c = cur(); if (!c) return; renderHistSummary(c); drawFan(c); renderHistStats(c); renderCases(c); renderCompare(c); }
+  function renderHist() { const c = cur(); if (!c) return; renderHistSummary(c); drawFan(c); renderProjection(c); renderHistStats(c); renderCases(c); renderCompare(c); }
 
   // ------------------------------------------------------------------ signalhistorikk
   const ETYPES = [['wtBuy', 'WaveTrend kjøpssignal (▲)', 1, 'wt'], ['wtSell', 'WaveTrend salgssignal (▼)', -1, 'wt'], ['rsiOS', 'RSI under 30', 1, 'rsi'], ['rsiOB', 'RSI over 70', -1, 'rsi'], ['golden', 'Golden cross (50D over 200D)', 1, 'ema'], ['death', 'Death cross (50D under 200D)', -1, 'ema'], ['reclaim', 'Tilbake over 200D EMA', 1, 'ema'], ['lose', 'Brudd under 200D EMA', -1, 'ema']];

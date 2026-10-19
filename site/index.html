@@ -130,6 +130,7 @@ p.dash-skeleton { min-height: 1.4em; }
 .ai-table td { padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--color-border-line); white-space: nowrap; vertical-align: top; }
 .ai-table .l { text-align: left; }
 .ai-table td.wrap { white-space: normal; min-width: 12rem; color: var(--color-fg-muted); }
+@media (max-width: 640px) { .ai-proj th, .ai-proj td { white-space: normal; padding: 7px 5px; } }
 .ai-table tr.hl td { background: var(--color-bg); }
 .ai-cases { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: var(--cds-gap-md); }
 .ai-case { text-align: left; font: inherit; color: inherit; cursor: pointer; background: var(--color-bg); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-md); display: grid; gap: 8px; align-content: start; min-width: 0; }
@@ -244,9 +245,10 @@ details.ai-more[open] > summary { margin-bottom: var(--cds-gap-sm); }
     <div class="ai-stack">
       <div class="ai-card" id="hs-summary"></div>
       <div class="ai-card" id="hs-fancard">
-        <div><h2>Dagens utvikling mot lignende historiske forløp</h2><p class="ai-muted">Prisen normalisert til 0 % ved signaldagen. Båndene viser spredningen i hva som skjedde de neste 30 dagene – ikke en prognose.</p></div>
+        <div class="ai-row"><div class="ai-stack" style="gap:4px"><h2>Mulig kursbane de neste 30 dagene</h2><p class="ai-muted">Hvis kursen utvikler seg som i de lignende historiske tilfellene. Båndene viser spredningen i hva som faktisk skjedde – ikke en prognose.</p></div><div class="ai-seg" role="group" aria-label="Vis som" id="hs-fan-mode"></div></div>
         <div class="ai-fan" id="hs-fan"></div>
         <div class="ai-legend" id="hs-fan-legend"></div>
+        <div id="hs-proj" class="ai-stack" style="gap:var(--cds-gap-md)"></div>
       </div>
       <div class="ai-card" id="hs-stats"></div>
       <div class="ai-card" id="hs-casescard">

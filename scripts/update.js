@@ -37,6 +37,7 @@ async function prevJSON(file) {
   try { const r = await fetch(`${PAGES}data/${file}?t=${Date.now()}`, { headers: { 'cache-control': 'no-cache' } }); return r.ok ? await r.json() : null; } catch (e) { return null; }
 }
 const fp = v => v == null ? '–' : v >= 1000 ? Math.round(v).toLocaleString('nb-NO').replace(/[  ]/g, ' ') : v >= 1 ? v.toLocaleString('nb-NO', { maximumFractionDigits: 3 }) : v.toLocaleString('nb-NO', { maximumSignificantDigits: 4 });
+const pc = v => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toLocaleString('nb-NO', { maximumFractionDigits: 1 }) + ' %';
 const EV = { wtBuy: 'WaveTrend kjøpssignal', wtSell: 'WaveTrend salgssignal', rsiOS: 'RSI under 30', rsiOB: 'RSI over 70', golden: 'golden cross', death: 'death cross', reclaim: 'tilbake over 200D EMA', lose: 'brudd under 200D EMA' };
 
 async function notify(title, lines, priority = 3, tags = []) {
@@ -77,22 +78,39 @@ async function notify(title, lines, priority = 3, tags = []) {
   if (!prev || !prev.coins) {
     await notify('Krypto-scanner er i gang', [...R.coins.map(c => `${c.sym} ${fp(c.price)} · ${c.status.label} · score ${c.score}`), '', 'Du får varsel når en status endres eller nye signaler kommer.'], 3, ['white_check_mark']);
   } else {
-    const alerts = []; let prio = 3; const tags = new Set();
+    // 1) tydelige signaler: egne varsler med høy prioritet
+    // 2) øvrige endringer: ett samlet varsel med lav prioritet (lydløst)
     const newDay = prev.lastD !== lastD;
+    const other = [];
     for (const c of R.coins) {
       const o = prev.coins[c.sym]; if (!o) continue;
-      if (o.code !== c.status.code) { alerts.push(`${c.sym}: ${o.label} → ${c.status.label} (score ${c.score})`);
-        if (c.status.code === 'buy') { prio = 5; tags.add('green_circle'); } else if (c.status.code === 'sell') { prio = 5; tags.add('red_circle'); } else prio = Math.max(prio, 4); }
+      const st = c.status, k = c.keys || {}, ex = c.ex || {};
+      const today = newDay ? (c.eventsAll || []).filter(e => e.t === c.asOf) : [];
+      const has = t => today.some(e => e.type === t);
+      const atSup = st.nearSup || !!st.recentUp, atRes = st.nearRes || !!st.recentDn;
+      let clear = null;
+      if (st.code === 'buy' && o.code !== 'buy') clear = { dir: 1, why: 'Alle kriteriene for et kjøpsoppsett er oppfylt.' };
+      else if (st.code === 'sell' && o.code !== 'sell') clear = { dir: -1, why: 'Alle kriteriene for et salgs-/exit-oppsett er oppfylt.' };
+      else if (has('wtBuy') && atSup && c.long.score > -20) clear = { dir: 1, why: 'WaveTrend kjøpssignal mens kursen står ved støtte.' };
+      else if (has('wtSell') && atRes) clear = { dir: -1, why: 'WaveTrend salgssignal mens kursen står ved motstand.' };
+      if (clear) {
+        const lines = [clear.why, `Kurs ${fp(c.price)} · score ${c.score} · ${c.long.label.toLowerCase()} langsiktig trend.`];
+        if (clear.dir > 0) { if (ex.entry) lines.push(`Kjøpssone ${fp(ex.entry[0])}–${fp(ex.entry[1])}`); if (ex.stop) lines.push(`Stopp (ugyldig under) ${fp(ex.stop)}`); if (k.nextUp) lines.push(`Første mål ${fp(k.nextUp.p)} (${pc(k.nextUp.d)})`); }
+        else { if (k.mustHold) lines.push(`Støtte som bør holde ${fp(k.mustHold.p)} (${pc(k.mustHold.d)})`); if (k.nextUp) lines.push(`Motstand ${fp(k.nextUp.p)}`); }
+        const an = c.analog; if (an && an.ok) lines.push(`Lignende tilfeller: ${Math.round(an.stats.h30.pos * 100)} % høyere etter 30 d (vanlig: ${Math.round(an.base.pos * 100)} %).`);
+        lines.push('', 'Ikke finansiell rådgivning.');
+        await notify(`${clear.dir > 0 ? 'Kjøpssignal' : 'Salgssignal'}: ${c.name} (${c.sym})`, lines, 5, [clear.dir > 0 ? 'green_circle' : 'red_circle']);
+      } else if (o.code !== st.code) other.push(`${c.sym}: ${o.label} → ${st.label} (score ${c.score})`);
       if (newDay) {
-        (c.eventsAll || []).filter(e => e.t === c.asOf).forEach(e => alerts.push(`${c.sym}: ${EV[e.type]}`));
-        if (o.majUp && c.price > o.majUp) alerts.push(`${c.sym}: dagslukk over avgjørende motstand ${fp(o.majUp)}`);
-        if (o.majDn && c.price < o.majDn) alerts.push(`${c.sym}: dagslukk under avgjørende støtte ${fp(o.majDn)}`);
+        today.filter(e => !clear || !['wtBuy', 'wtSell'].includes(e.type)).forEach(e => other.push(`${c.sym}: ${EV[e.type]}`));
+        if (o.majUp && c.price > o.majUp) other.push(`${c.sym}: dagslukk over avgjørende motstand ${fp(o.majUp)}`);
+        if (o.majDn && c.price < o.majDn) other.push(`${c.sym}: dagslukk under avgjørende støtte ${fp(o.majDn)}`);
       }
       const seen = new Set(o.breaks || []);
-      (c.breaks || []).filter(b => (b.type === 'bekreftet' || b.type === 'retest') && b.daysAgo <= 2 && !seen.has(`${b.dir}:${b.level}:${b.date}`)).forEach(b => alerts.push(`${c.sym}: ${b.text}`));
+      (c.breaks || []).filter(b => (b.type === 'bekreftet' || b.type === 'retest') && b.daysAgo <= 2 && !seen.has(`${b.dir}:${b.level}:${b.date}`)).forEach(b => other.push(`${c.sym}: ${b.text}`));
     }
-    if (alerts.length) await notify(prio >= 5 ? 'Krypto-scanner: mulig oppsett' : 'Krypto-scanner: endringer', [...alerts, '', 'Ikke finansiell rådgivning.'], prio, [...tags]);
-    else console.log('Ingen varsler.');
+    if (other.length) await notify('Krypto-scanner: endringer', other, 2, []);
+    else console.log('Ingen øvrige varsler.');
   }
   output('deploy', 'true');
 })().catch(e => { console.error(e); process.exit(1); });
