@@ -3,3 +3,4 @@ node_modules/
 candles_*.json
 .DS_Store
 .dtstate.json
+research/data/
