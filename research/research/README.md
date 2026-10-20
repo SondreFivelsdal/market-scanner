@@ -1,0 +1,27 @@
+Forskningsdata hentet 2026-10-20T11:20:39.341Z
+
+- BTC 5m: 210239 candles fra 2024-10-20
+- BTC 15m: 140154 candles fra 2022-10-21
+- BTC 1h: 35038 candles fra 2022-10-21
+- BTC 4h: 8759 candles fra 2022-10-21
+- ETH 5m: 210239 candles fra 2024-10-20
+- ETH 15m: 140154 candles fra 2022-10-21
+- ETH 1h: 35038 candles fra 2022-10-21
+- ETH 4h: 8759 candles fra 2022-10-21
+- XRP 5m: 210239 candles fra 2024-10-20
+- XRP 15m: 140154 candles fra 2022-10-21
+- XRP 1h: 35038 candles fra 2022-10-21
+- XRP 4h: 8759 candles fra 2022-10-21
+- ADA 15m: 140154 candles fra 2022-10-21
+- ADA 1h: 35038 candles fra 2022-10-21
+- ADA 4h: 8759 candles fra 2022-10-21
+- POL 15m: 73636 candles fra 2024-09-13
+- POL 1h: 18409 candles fra 2024-09-13
+- POL 4h: 4602 candles fra 2024-09-13
+- SAND 15m: 140154 candles fra 2022-10-21
+- SAND 1h: 35038 candles fra 2022-10-21
+- SAND 4h: 8759 candles fra 2022-10-21
+- SOL 5m: 210239 candles fra 2024-10-20
+- SOL 15m: 140154 candles fra 2022-10-21
+- SOL 1h: 35038 candles fra 2022-10-21
+- SOL 4h: 8759 candles fra 2022-10-21
