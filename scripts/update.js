@@ -3,6 +3,7 @@
 // Miljø: PAGES_URL (adressen til siden, med / på slutten), NTFY_TOPIC (kanal i ntfy-appen), FORCE=1 (bygg uansett).
 const fs = require('fs'), path = require('path');
 const MS = require('../engine.js');
+const { clearSignal } = require('./rules.js');
 const API = 'https://data-api.binance.vision/api/v3/klines';
 const DAY = 864e5, H4 = 4 * 36e5;
 const OUT = path.join(__dirname, '..', 'site', 'data');
@@ -51,6 +52,7 @@ async function notify(title, lines, priority = 3, tags = []) {
 (async () => {
   const now = Date.now();
   const prev = await prevJSON('meta.json');
+  const prevBT = await prevJSON('backtest.json');
   // rask sjekk: har det kommet en ny lukket 4t-candle siden forrige bygg?
   const probe = await get(`${API}?symbol=BTCUSDT&interval=4h&limit=3`);
   const last4h = Math.max(...probe.filter(x => x[6] < now).map(x => x[0]));
@@ -67,7 +69,7 @@ async function notify(title, lines, priority = 3, tags = []) {
   fs.writeFileSync(path.join(OUT, 'candles_4h.json'), JSON.stringify(h4));
   // cache-busting: nye versjoner av app.js/dash-shim.js lastes med en gang
   const ver = (process.env.GITHUB_SHA || String(Date.now())).slice(0, 8), ix = path.join(OUT, '..', 'index.html');
-  fs.writeFileSync(ix, fs.readFileSync(ix, 'utf8').replace(/src="(app|dash-shim)\.js[^"]*"/g, `src="$1.js?v=${ver}"`));
+  fs.writeFileSync(ix, fs.readFileSync(ix, 'utf8').replace(/src="(app|dash-shim|daytrade)\.js[^"]*"/g, `src="$1.js?v=${ver}"`));
   const lastD = R.asOf;
   const coins = {};
   for (const c of R.coins) coins[c.sym] = { code: c.status.code, label: c.status.label, score: c.score, price: c.price,
@@ -89,18 +91,14 @@ async function notify(title, lines, priority = 3, tags = []) {
       const o = prev.coins[c.sym]; if (!o) continue;
       const st = c.status, k = c.keys || {}, ex = c.ex || {};
       const today = newDay ? (c.eventsAll || []).filter(e => e.t === c.asOf) : [];
-      const has = t => today.some(e => e.type === t);
-      const atSup = st.nearSup || !!st.recentUp, atRes = st.nearRes || !!st.recentDn;
-      let clear = null;
-      if (st.code === 'buy' && o.code !== 'buy') clear = { dir: 1, why: 'Alle kriteriene for et kjøpsoppsett er oppfylt.' };
-      else if (st.code === 'sell' && o.code !== 'sell') clear = { dir: -1, why: 'Alle kriteriene for et salgs-/exit-oppsett er oppfylt.' };
-      else if (has('wtBuy') && atSup && c.long.score > -20) clear = { dir: 1, why: 'WaveTrend kjøpssignal mens kursen står ved støtte.' };
-      else if (has('wtSell') && atRes) clear = { dir: -1, why: 'WaveTrend salgssignal mens kursen står ved motstand.' };
+      const clear = clearSignal(c, o.code, newDay);
       if (clear) {
         const lines = [clear.why, `Kurs ${fp(c.price)} · score ${c.score} · ${c.long.label.toLowerCase()} langsiktig trend.`];
         if (clear.dir > 0) { if (ex.entry) lines.push(`Kjøpssone ${fp(ex.entry[0])}–${fp(ex.entry[1])}`); if (ex.stop) lines.push(`Stopp (ugyldig under) ${fp(ex.stop)}`); if (k.nextUp) lines.push(`Første mål ${fp(k.nextUp.p)} (${pc(k.nextUp.d)})`); }
         else { if (k.mustHold) lines.push(`Støtte som bør holde ${fp(k.mustHold.p)} (${pc(k.mustHold.d)})`); if (k.nextUp) lines.push(`Motstand ${fp(k.nextUp.p)}`); }
         const an = c.analog; if (an && an.ok) lines.push(`Lignende tilfeller: ${Math.round(an.stats.h30.pos * 100)} % høyere etter 30 d (vanlig: ${Math.round(an.base.pos * 100)} %).`);
+        const bt = prevBT && prevBT.summary && prevBT.summary.ALL && prevBT.summary.ALL[clear.dir > 0 ? 'clearBuy' : 'clearSell'];
+        if (bt && bt.h[30] && bt.h[30].n) lines.push(`Backtest av denne varsel-regelen: riktig retning etter 30 d i ${Math.round(bt.h[30].hit * 100)} % av ${bt.h[30].n} tidligere varsler (vanlig: ${Math.round(bt.h[30].base * 100)} %).`);
         lines.push('', 'Ikke finansiell rådgivning.');
         await notify(`${clear.dir > 0 ? 'Kjøpssignal' : 'Salgssignal'}: ${c.name} (${c.sym})`, lines, 5, [clear.dir > 0 ? 'green_circle' : 'red_circle']);
       } else if (o.code !== st.code) other.push(`${c.sym}: ${o.label} → ${st.label} (score ${c.score})`);

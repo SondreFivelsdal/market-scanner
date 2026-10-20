@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>AI Crypto Analyst</title>
-<meta name="description" content="Teknisk analyse av BTC, XRP, POL og SAND – oppdateres automatisk.">
+<meta name="description" content="Teknisk analyse av BTC, XRP, ADA, POL og SAND – oppdateres automatisk.">
 <meta name="theme-color" content="#f7f6f3" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#171716" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -47,6 +47,7 @@ p.dash-skeleton { min-height: 1.4em; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
 <script src="dash-shim.js"></script>
+<script src="daytrade.js"></script>
 </head>
 <body>
 <div id="dash-root">
@@ -157,6 +158,10 @@ details.ai-more[open] > summary { margin-bottom: var(--cds-gap-sm); }
 .ai-why:hover { color: var(--color-fg); border-color: var(--cds-chart-axis); }
 .ai-fail { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); min-height: inherit; }
 .ai-fail::before { content: ""; width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-bad); }
+.dt-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: var(--cds-gap-sm); }
+.dt-in { display: grid; gap: 4px; font-size: var(--cds-font-size-caption); }
+.dt-in input { font: inherit; font-size: var(--cds-font-size-body, 15px); color: var(--color-fg); background: var(--color-bg); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: 8px 10px; min-width: 0; font-variant-numeric: tabular-nums; }
+.dt-in input:focus-visible { outline: 2px solid var(--cds-chart-axis); outline-offset: 1px; }
 @media (max-width: 640px) { .ai-hide-sm { display: none; } .ai-card { padding: var(--cds-pad-md); } }
 </style>
 
@@ -164,12 +169,13 @@ details.ai-more[open] > summary { margin-bottom: var(--cds-gap-sm); }
   <header class="ai-head" id="topp">
     <h1>AI Crypto Analyst</h1>
     <p id="ai-takeaway" class="dash-skeleton">—</p>
-    <p class="ai-muted"><span id="ai-asof">—</span> · Teknisk analyse av Binance-kurser for Bitcoin, XRP, Polygon og The Sandbox. Statusene er regelbaserte vurderinger, ikke kjøps- eller salgsordre. Ikke finansiell rådgivning.</p>
+    <p class="ai-muted"><span id="ai-asof">—</span> · Teknisk analyse av Binance-kurser for Bitcoin, XRP, Cardano, Polygon og The Sandbox. Statusene er regelbaserte vurderinger, ikke kjøps- eller salgsordre. Ikke finansiell rådgivning.</p>
     <p class="ai-muted" id="ms-updated"></p>
   </header>
 
   <nav class="ai-tabs" role="tablist" aria-label="Sider" id="faner">
     <button role="tab" data-tab="oversikt" id="tab-oversikt">Oversikt</button>
+    <button role="tab" data-tab="daytrading" id="tab-daytrading">Daytrading</button>
     <button role="tab" data-tab="teknisk" id="tab-teknisk">Teknisk analyse</button>
     <button role="tab" data-tab="historikk" id="tab-historikk">Historiske scenarioer</button>
     <button role="tab" data-tab="signaler" id="tab-signaler">Signalhistorikk</button>
@@ -245,7 +251,7 @@ details.ai-more[open] > summary { margin-bottom: var(--cds-gap-sm); }
     <div class="ai-stack">
       <div class="ai-card" id="hs-summary"></div>
       <div class="ai-card" id="hs-fancard">
-        <div class="ai-row"><div class="ai-stack" style="gap:4px"><h2>Mulig kursbane de neste 30 dagene</h2><p class="ai-muted">Hvis kursen utvikler seg som i de lignende historiske tilfellene. Båndene viser spredningen i hva som faktisk skjedde – ikke en prognose.</p></div><div class="ai-seg" role="group" aria-label="Vis som" id="hs-fan-mode"></div></div>
+        <div class="ai-row"><div class="ai-stack" style="gap:4px"><h2 id="hs-fan-title">Mulig kursbane de neste 30 dagene</h2><p class="ai-muted">Hvis kursen utvikler seg som i de lignende historiske tilfellene. Båndene viser spredningen i hva som faktisk skjedde – ikke en prognose.</p></div><div class="ai-stack" style="gap:6px;align-items:flex-end"><div class="ai-seg" role="group" aria-label="Tidshorisont" id="hs-fan-hz"></div><div class="ai-seg" role="group" aria-label="Vis som" id="hs-fan-mode"></div></div></div>
         <div class="ai-fan" id="hs-fan"></div>
         <div class="ai-legend" id="hs-fan-legend"></div>
         <div id="hs-proj" class="ai-stack" style="gap:var(--cds-gap-md)"></div>
@@ -259,9 +265,21 @@ details.ai-more[open] > summary { margin-bottom: var(--cds-gap-sm); }
     </div>
   </section>
 
+  <section class="ai-page" id="daytrading" role="tabpanel" aria-labelledby="tab-daytrading" hidden>
+    <div class="ai-stack">
+      <div class="ai-card" id="dt-head"></div>
+      <div class="ai-card" id="dt-setups"></div>
+      <div class="ai-card" id="dt-chart"></div>
+      <div class="ai-grid2"><div class="ai-card" id="dt-calc"></div><div class="ai-card" id="dt-watch"></div></div>
+      <div class="ai-card" id="dt-recent"></div>
+      <div class="ai-card" id="dt-bt"></div>
+    </div>
+  </section>
+
   <section class="ai-page" id="signaler" role="tabpanel" aria-labelledby="tab-signaler" hidden>
     <div class="ai-stack">
       <div class="ai-card" id="sg-stats"></div>
+      <div class="ai-card" id="sg-backtest"></div>
       <div class="ai-card" id="sg-recent"></div>
     </div>
   </section>

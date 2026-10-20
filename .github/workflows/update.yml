@@ -20,7 +20,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -29,6 +29,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      # daytrading-varsler: sjekkes ved hver kjøring (hvert 15. min). Husker siste kontrollerte candle i Actions-cachen.
+      - uses: actions/cache/restore@v4
+        with:
+          path: .dtstate.json
+          key: dt-state-${{ github.run_id }}
+          restore-keys: dt-state-
+      - name: Daytrading-varsler
+        continue-on-error: true
+        run: node scripts/daytrade_alerts.js
+        env:
+          PAGES_URL: https://sondrefivelsdal.github.io/market-scanner/
+          NTFY_TOPIC: msc-6d2f0a04f4c8
+          DT_ALERTS: good   # good = bare oppsett som var lønnsomme i backtesten · all = alle · off = ingen
+      - uses: actions/cache/save@v4
+        if: always()
+        continue-on-error: true
+        with:
+          path: .dtstate.json
+          key: dt-state-${{ github.run_id }}
       - name: Hent data og kjør analyse
         id: build
         run: node scripts/update.js
@@ -36,6 +55,19 @@ jobs:
           PAGES_URL: https://sondrefivelsdal.github.io/market-scanner/
           NTFY_TOPIC: msc-6d2f0a04f4c8
           FORCE: ${{ github.event_name != 'schedule' && '1' || '0' }}
+      - name: Backtest av daytrading-oppsett (én gang i døgnet)
+        if: steps.build.outputs.deploy == 'true'
+        continue-on-error: true
+        run: node scripts/daytrade_backtest.js
+        env:
+          PAGES_URL: https://sondrefivelsdal.github.io/market-scanner/
+      - name: Backtest av status og varsler
+        if: steps.build.outputs.deploy == 'true'
+        continue-on-error: true   # en feil her skal ikke stoppe oppdateringen av siden
+        run: node scripts/backtest.js
+        env:
+          PAGES_URL: https://sondrefivelsdal.github.io/market-scanner/
+          BUDGET_MS: '480000'
       - if: steps.build.outputs.deploy == 'true'
         uses: actions/configure-pages@v5
       - if: steps.build.outputs.deploy == 'true'

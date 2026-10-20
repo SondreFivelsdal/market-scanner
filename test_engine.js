@@ -24,6 +24,14 @@ for(const c of R.coins){ const a=c.analog;
   ok(a.nEff<=a.n,'nEff<=n'); ok(a.cases.every(x=>x.post.length===31 && Math.abs(x.post[0]-1)<1e-9),'post-sti');
   // utfall stemmer med rå data
   const x=a.cases[0], Dd=D[x.sym], i=Dd.t.indexOf(x.t); ok(Math.abs(((Dd.c[i+30]/Dd.c[i]-1)*100)-x.r30)<0.01, 'r30 avviker');
+  // lange horisonter: utfall stemmer med rådata, bare kjente utfall, n faller med horisonten
+  for(const H of MS.HZ){ for(const y of a.cases){ const f=y.fwd[H], Dy=D[y.sym], iy=Dy.t.indexOf(y.t);
+      if(iy+H<Dy.c.length){ ok(f && Math.abs(((Dy.c[iy+H]/Dy.c[iy]-1)*100)-f[0])<0.01, `${c.sym} fwd ${H} avviker`); } else ok(f===null, `${c.sym} fwd ${H} burde vært ukjent`); } }
+  ok(a.hz.length===MS.HZ.length && a.hz.every((z,i)=>i===0||z.n<=a.hz[i-1].n), c.sym+' hz n ikke fallende');
+  ok(a.hz.every(z=>z.nEff<=z.n && (z.n===0||(z.ret.q10<=z.ret.q50&&z.ret.q50<=z.ret.q90))), c.sym+' hz kvantiler');
+  ok(a.fanL.length===366 && a.fanL[0].q50===1 && a.fanL.every((f,i)=>i===0||f.n<=a.fanL[i-1].n), c.sym+' fanL');
+  ok(Math.abs(a.fanL[30].q50-a.fan[30].q50)<1e-3, c.sym+' fanL og fan uenige på dag 30');
+  ok(a.todayL[a.todayL.length-1]===1, c.sym+' todayL');
   ok(c.score>=0&&c.score<=100,'score');
   ok(['buy','wait','sell','none'].includes(c.status.code),'status');
   const w=c.comps.reduce((s,x)=>s+x.w,0); ok(w===100,'vekter summerer til '+w);

@@ -5,8 +5,10 @@
  */
 (function (root) {
 'use strict';
-const COINS = ['BTC', 'XRP', 'POL', 'SAND'];
-const NAMES = { BTC: 'Bitcoin', XRP: 'XRP', POL: 'Polygon', SAND: 'The Sandbox' };
+const COINS = ['BTC', 'XRP', 'ADA', 'POL', 'SAND'];
+const NAMES = { BTC: 'Bitcoin', XRP: 'XRP', ADA: 'Cardano', POL: 'Polygon', SAND: 'The Sandbox' };
+// horisonter (dager) for historiske estimater: 1 uke, 30 dager, 3, 6 og 12 måneder
+const HZ = [7, 30, 90, 180, 365];
 const DAY = 864e5;
 
 // ---------------------------------------------------------------- indikatorer (fra engine.js v1)
@@ -40,6 +42,7 @@ const pct = (a, b) => (a / b - 1) * 100;
 const last = a => a[a.length - 1];
 const r1 = v => v == null || !isFinite(v) ? null : Math.round(v * 10) / 10;
 const r2 = v => v == null || !isFinite(v) ? null : Math.round(v * 100) / 100;
+const r4 = v => v == null || !isFinite(v) ? null : Math.round(v * 1e4) / 1e4;
 const sig = v => v == null ? null : +Number(v).toPrecision(5);
 const s4 = v => v == null ? null : +Number(v).toPrecision(4);
 const clip = (v, a = -1, b = 1) => Math.max(a, Math.min(b, v));
@@ -363,8 +366,16 @@ function series(D) {
     if (hs.length === 2 && ls.length === 2) { const hh = hs[0] > hs[1], hl = ls[0] > ls[1]; str[t] = hh && hl ? 1 : (!hh && !hl ? -1 : 0); }
   }
   const zr = n => c.map((v, i) => i >= n && sig90[i] ? Math.log(v / c[i - n]) / (sig90[i] * Math.sqrt(n)) : null);
-  return { N, t: D.t, c, e20, e50, e200, A, atrP, R, wt1, wt2, macd: M, sig90, volReg, relVol, sup, res, supP, resP, str, z7: zr(7), z14: zr(14), z30: zr(30) };
+  const S = { N, t: D.t, c, e20, e50, e200, A, atrP, R, wt1, wt2, macd: M, sig90, volReg, relVol, sup, res, supP, resP, str, z7: zr(7), z14: zr(14), z30: zr(30) };
+  S.V = new Array(N); for (let t = 0; t < N; t++) S.V[t] = vec(S, t); // kjennetegn-vektor per dag (bufret for scenario-motoren)
+  return S;
 }
+// alle verdiene i series() er kausale, så en serie regnet på full historikk kan kuttes til de første n dagene
+// (brukes av backtesten for å slippe å regne alt på nytt for hver dato; testet i test_engine.js)
+function sliceS(S, n) { const o = { N: n }; for (const k in S) { const v = S[k];
+    if (Array.isArray(v)) o[k] = v.slice(0, n);
+    else if (k === 'macd') { o.macd = {}; for (const kk in v) o.macd[kk] = Array.isArray(v[kk]) ? v[kk].slice(0, n) : v[kk]; } }
+  return o; }
 
 // ---------------------------------------------------------------- historisk scenario-motor
 // Faste skalaer valgt på forhånd (ikke tilpasset utfall), slik at likhetsmålet ikke er optimalisert mot historikken.
@@ -394,7 +405,7 @@ function outcome(D, t, H) { const N = D.c.length; if (t + H >= N) return null; c
   return { ret: (D.c[t + H] / c0 - 1) * 100, maxUp: (mx / c0 - 1) * 100, maxDn: (mn / c0 - 1) * 100 }; }
 function analogs(sym, ctx, opt = {}) {
   const S = ctx.S[sym], D = ctx.D[sym], N = S.N, t0 = N - 1;
-  const v0 = vec(S, t0); if (!v0) return { ok: false, reason: 'For kort historikk til å beregne alle indikatorer.' };
+  const v0 = S.V ? S.V[t0] : vec(S, t0); if (!v0) return { ok: false, reason: 'For kort historikk til å beregne alle indikatorer.' };
   const btcIdx = ctx.btcIdx; const btcS = ctx.S.BTC;
   const btcReg = t => { const i = btcIdx.get(t); return i == null ? null : regimeAt(btcS, i); };
   const reg0 = regimeAt(S, t0), breg0 = sym === 'BTC' ? reg0 : btcReg(S.t[t0]);
@@ -403,7 +414,7 @@ function analogs(sym, ctx, opt = {}) {
     for (let t = 230; t <= Ss.N - 31; t++) {
       if (s === sym && t > t0 - 60) continue;
       const r = regimeAt(Ss, t); if (r == null || r !== reg0) continue;
-      const v = vec(Ss, t); if (!v) continue;
+      const v = Ss.V ? Ss.V[t] : vec(Ss, t); if (!v) continue;
       const br = s === 'BTC' ? r : btcReg(Ss.t[t]);
       const d = dist(v0, v); const item = { s, t, date: Ss.t[t], d, sim: simOf(d), v, brOk: br === breg0 };
       pools.loose.push(item); if (item.brOk) pools.strict.push(item); } }
@@ -424,6 +435,7 @@ function analogs(sym, ctx, opt = {}) {
     return { sym: it.s, date: dstr(it.date), t: it.date, sim: Math.round(it.sim), d: r2(it.d), r1: r2(o1.ret), r7: r2(o7.ret), r30: r2(o30.ret), up30: r2(o30.maxUp), dn30: r2(o30.maxDn),
       supBroke: sp == null ? null : supBroke, resBroke: rp == null ? null : resBroke, btc30: r2(btc30), pre: pre.map(x => +x.toFixed(4)), post: post.map(x => +x.toFixed(4)),
       feat: { rsi: r1(Sd.R[t]), wt: Math.round(Sd.wt1[t]), d200: r1((Sd.c[t] / Sd.e200[t] - 1) * 100), d50: r1((Sd.c[t] / Sd.e50[t] - 1) * 100), z30: r1((Dd.c[t] / Dd.c[t - 30] - 1) * 100), str: Sd.str[t], rv: r2(Sd.relVol[t]), sup: r1(Sd.sup[t]), res: r1(Sd.res[t]) },
+      fwd: Object.fromEntries(HZ.map(H => { const o = outcome(Dd, t, H); return [H, o ? [r2(o.ret), r2(o.maxUp), r2(o.maxDn)] : null]; })),
       fz: it.v.map(x => r2(x)) }; });
   // uavhengighet: grupper datoer som ligger innen 30 dager av hverandre (alle coins)
   const dates = cases.map(c => c.t).sort((a, b) => a - b); let nEff = 0, startC = -Infinity; for (const d of dates) { if (d - startC >= 30 * DAY) { nEff++; startC = d; } }
@@ -438,6 +450,21 @@ function analogs(sym, ctx, opt = {}) {
   // basisrate: alle dager i samme regime (samme filter som utvalget)
   const base = (arr) => { const r = []; for (const it of arr) { const o = outcome(ctx.D[it.s], it.t, 30); if (o) r.push(o.ret); } return { n: r.length, pos: r.length ? r.filter(x => x > 0).length / r.length : null, median: quant(r, 0.5) }; };
   const baseAll = base(relaxed ? pools.loose : pools.strict), baseOwn = base((relaxed ? pools.loose : pools.strict).filter(x => x.s === sym));
+  // estimater for 1 uke – 12 måneder. Bare tilfeller der utfallet er kjent teller, så n faller for lange horisonter.
+  // Uavhengighet: tilfeller som ligger nærmere hverandre enn horisonten deler mye av framtiden, så de grupperes (vindu = maks(30, H) dager).
+  const poolA = relaxed ? pools.loose : pools.strict;
+  const hz = ctx.lite ? null : HZ.map(H => { const cs = cases.filter(c => c.fwd[H]); const v = cs.map(c => c.fwd[H][0]), up = cs.map(c => c.fwd[H][1]), dn = cs.map(c => c.fwd[H][2]);
+    const ds = cs.map(c => c.t).sort((a, b) => a - b); let ne = 0, st0 = -Infinity; for (const d of ds) { if (d - st0 >= Math.max(30, H) * DAY) { ne++; st0 = d; } }
+    const k = v.filter(x => x > 0).length, pos = v.length ? k / v.length : null;
+    const Q = a => ({ q10: r2(quant(a, 0.1)), q25: r2(quant(a, 0.25)), q50: r2(quant(a, 0.5)), q75: r2(quant(a, 0.75)), q90: r2(quant(a, 0.9)) });
+    const br = []; for (const it of poolA) { const Dd = ctx.D[it.s]; if (it.t + H < Dd.c.length) br.push((Dd.c[it.t + H] / Dd.c[it.t] - 1) * 100); }
+    return { H, n: v.length, nEff: ne, pos, ci: pos == null ? [null, null] : wilson(Math.round(pos * ne), Math.max(1, ne)),
+      ret: Q(v), mean: r2(mean(v)), best: v.length ? Math.max(...v) : null, worst: v.length ? Math.min(...v) : null, up: Q(up), dn: Q(dn),
+      base: { n: br.length, pos: br.length ? br.filter(x => x > 0).length / br.length : null, median: r2(quant(br, 0.5)) } }; });
+  // lang kursbane (0–365 dager) med antall kjente tilfeller per dag
+  const fanL = []; if (!ctx.lite) for (let j = 0; j <= 365; j++) { const v = []; for (const c of cases) { const Dd = ctx.D[c.sym], i = ctx.idx[c.sym].get(c.t); if (i + j < Dd.c.length) v.push(Dd.c[i + j] / Dd.c[i]); }
+    fanL.push({ j, n: v.length, q10: r4(quant(v, 0.1)), q25: r4(quant(v, 0.25)), q50: r4(quant(v, 0.5)), q75: r4(quant(v, 0.75)), q90: r4(quant(v, 0.9)) }); }
+  const todayL = []; for (let j = Math.max(0, t0 - 365); j <= t0; j++) todayL.push(+(D.c[j] / D.c[t0]).toFixed(4));
   // vifte: median og spredning for neste 30 dager
   const fan = []; for (let j = 0; j <= 30; j++) { const v = cases.map(c => c.post[j]).filter(x => x != null); fan.push({ j, q10: quant(v, 0.1), q25: quant(v, 0.25), q50: quant(v, 0.5), q75: quant(v, 0.75), q90: quant(v, 0.9) }); }
   const preFan = []; for (let j = 0; j <= 60; j++) { const v = cases.map(c => c.pre.length === 61 ? c.pre[j] : null).filter(x => x != null); preFan.push({ j: j - 60, q50: quant(v, 0.5) }); }
@@ -448,7 +475,7 @@ function analogs(sym, ctx, opt = {}) {
   return { ok: true, n: cases.length, nEff, meanSim: Math.round(mean(cases.map(c => c.sim)) || 0), weak, relaxed, reliability,
     regime: reg0 ? 'over 200D EMA' : 'under 200D EMA', btcRegime: sym === 'BTC' ? null : (breg0 ? 'BTC over 200D EMA' : 'BTC under 200D EMA'),
     criteria: FEATS.map((f, i) => ({ k: f.k, label: f.label, w: f.w, now: r2(v0[i]) })),
-    stats: st, base: baseAll, baseOwn, fan, preFan, today, todayFeat, cases, top, poolN: (relaxed ? pools.loose : pools.strict).length };
+    stats: st, base: baseAll, baseOwn, hz, fan, fanL, preFan, today, todayL, todayFeat, cases, top, poolN: (relaxed ? pools.loose : pools.strict).length };
 }
 
 // ---------------------------------------------------------------- tekniske hendelser og signalhistorikk
@@ -650,8 +677,8 @@ function analyseCoin(sym, ctx, H4, breadth) {
 }
 function run(dailyRows, h4Rows, opts = {}) {
   const Dall = Array.isArray(dailyRows) ? prep(dailyRows) : dailyRows, Hall = Array.isArray(h4Rows) ? prep(h4Rows) : (h4Rows || {});
-  const ctx = { D: {}, S: {}, btcIdx: new Map(), btcLong: 0 };
-  for (const s of COINS) if (Dall[s] && Dall[s].c.length >= 260) { ctx.D[s] = Dall[s]; ctx.S[s] = series(Dall[s]); }
+  const ctx = { D: {}, S: {}, idx: {}, btcIdx: new Map(), btcLong: 0, lite: !!opts.lite }; // lite: hopper over ting som ikke påvirker status/score (backtest)
+  for (const s of COINS) if (Dall[s] && Dall[s].c.length >= 260) { ctx.D[s] = Dall[s]; ctx.S[s] = opts.pre && opts.pre[s] ? opts.pre[s] : series(Dall[s]); ctx.idx[s] = new Map(Dall[s].t.map((t, i) => [t, i])); }
   if (ctx.D.BTC) ctx.D.BTC.t.forEach((t, i) => ctx.btcIdx.set(t, i));
   const syms = COINS.filter(s => ctx.D[s]);
   const breadth = { n: syms.length, above: syms.filter(s => { const S = ctx.S[s], t = S.N - 1; return S.c[t] > S.e200[t]; }).length };
@@ -669,6 +696,6 @@ function run(dailyRows, h4Rows, opts = {}) {
     method: { feats: FEATS.map(f => ({ k: f.k, label: f.label, w: f.w })), weights: COMP_W, labels: COMP_LABEL, eventTypes: EVENT_TYPES } };
 }
 
-const MS = { COINS, NAMES, run, prep, series, analogs, events, eventStats, toWeekly, sliceD, analyseV1, analyseLevels, touchStats, wilson, quant, fmtP, fmtPct, dstr, dnb, ema, rsi, atr, waveTrend, macd, vec, FEATS, EVENT_TYPES, COMP_W, COMP_LABEL };
+const MS = { COINS, NAMES, HZ, run, prep, series, sliceS, analogs, events, eventStats, toWeekly, sliceD, analyseV1, analyseLevels, touchStats, wilson, quant, fmtP, fmtPct, dstr, dnb, ema, rsi, atr, waveTrend, macd, vec, FEATS, EVENT_TYPES, COMP_W, COMP_LABEL };
 if (typeof module !== 'undefined' && module.exports) module.exports = MS; else root.MS = MS;
 })(typeof window !== 'undefined' ? window : globalThis);

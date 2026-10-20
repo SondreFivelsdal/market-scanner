@@ -1,16 +1,21 @@
 # Market scanner – AI Crypto Analyst
 
-Teknisk analyse av BTC, XRP, POL og SAND (Binance-kurser). Kjører automatisk i GitHub Actions og publiseres på
+Teknisk analyse av BTC, XRP, ADA, POL og SAND (Binance-kurser). Kjører automatisk i GitHub Actions og publiseres på
 **https://sondrefivelsdal.github.io/market-scanner/**
 
 - `engine.js` – analysemotoren (samme som i Claude-prosjektet, `scanner/v2/engine.js`).
 - `scripts/update.js` – henter candles fra Binance sitt åpne markedsdata-API, kjører motoren, skriver `site/data/*.json` og sender push-varsel (ntfy).
+- `scripts/backtest.js` – backtest av statusreglene og varsel-regelen (punkt-i-tid, fra 2019). Bufres i `site/data/backtest_rows.json`, så normalt regnes bare nye dager. Vises under Signalhistorikk.
+- `scripts/rules.js` – regelen for «tydelig signal», felles for varslene og backtesten.
+- `site/daytrade.js` – daytrading-motoren (15-min oppsett med 1t-trend som filter). Brukes både live i nettleseren (Daytrading-fanen henter data direkte fra Binance hvert minutt) og i Actions:
+  - `scripts/daytrade_alerts.js` – push-varsel når et oppsett utløses (hvert 15. min, bare oppsett som var lønnsomme i backtesten; styres med `DT_ALERTS` i workflowen).
+  - `scripts/daytrade_backtest.js` – backtest siste 12 måneder, én gang i døgnet → `site/data/daytrade.json`.
 - `site/` – nettsiden (`index.html`, `app.js`, `dash-shim.js`). Live-pris hentes direkte i nettleseren hvert 30. sekund.
 - `.github/workflows/update.yml` – kjører hvert 15. minutt, men bygger og publiserer bare når en ny 4-timers candle er lukket (ca. 6 ganger i døgnet). Dagsanalysen endrer seg ved dagslukk (kl. 02:00 norsk sommertid / 01:00 vintertid).
 
 **Varsler:** installer appen *ntfy* og abonner på kanalen `msc-6d2f0a04f4c8`. Du får varsel når en status endres
 (høy prioritet ved «Mulig kjøpsoppsett» / «Mulig salgs-/exit-oppsett»), ved nye signaler etter dagslukk og ved bekreftede brudd.
 
-Kjør manuelt: Actions → «Oppdater scanner» → *Run workflow*. Test lokalt: `node test_engine.js` (krever `candles_1d.json` og `candles_4h.json` i rotmappen).
+Kjør manuelt: Actions → «Oppdater scanner» → *Run workflow*. Test lokalt: `node test_engine.js`, `node test_backtest.js` og `node test_daytrade.js` (krever `candles_1d.json` og `candles_4h.json` i rotmappen).
 
 Ikke finansiell rådgivning.

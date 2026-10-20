@@ -1,8 +1,13 @@
 (() => {
   // ------------------------------------------------------------------ felles
-  const NAMES = { BTC: 'Bitcoin', XRP: 'XRP', POL: 'Polygon', SAND: 'The Sandbox' };
-  const ORDER = ['BTC', 'XRP', 'POL', 'SAND'];
-  const TABS = ['oversikt', 'teknisk', 'historikk', 'signaler', 'avansert'];
+  const NAMES = { BTC: 'Bitcoin', XRP: 'XRP', ADA: 'Cardano', POL: 'Polygon', SAND: 'The Sandbox' };
+  const ORDER = ['BTC', 'XRP', 'ADA', 'POL', 'SAND'];
+  // horisonter i Historie-fanen
+  const HZ = [7, 30, 90, 180, 365];
+  const HZL = { 7: '1 uke', 30: '30 dager', 90: '3 måneder', 180: '6 måneder', 365: '12 måneder' };
+  const HZS = { 7: '1 u', 30: '30 d', 90: '3 mnd', 180: '6 mnd', 365: '12 mnd' };
+  const symList = () => { const a = ORDER.filter(s => state.coins[s]); return a.length > 1 ? a.slice(0, -1).join(', ') + ' og ' + a[a.length - 1] : a.join(''); };
+  const TABS = ['oversikt', 'daytrading', 'teknisk', 'historikk', 'signaler', 'avansert'];
   const STATUS_CLS = { buy: 'st-buy', wait: 'st-wait', sell: 'st-sell', none: 'st-none' };
   const DAY = 864e5;
   const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
@@ -439,7 +444,7 @@
     chips.append(ch('Tilfeller', String(an.n)), ch('Uavhengige perioder', String(an.nEff)), ch('Snittlikhet', an.meanSim + ' %'), ch('Vurdering', r[0], r[1]));
     const filt = el('ul', 'ai-list');
     [`Samme markedsregime: pris ${an.regime}${an.btcRegime ? ' og ' + an.btcRegime : ''}${an.relaxed ? ' (BTC-regimet ble ignorert for å få nok tilfeller)' : ''}.`,
-     'Sammenligner med alle fire coins (BTC, XRP, POL, SAND) – oppgitt coin og dato for hvert tilfelle.',
+     `Sammenligner med alle coins i scanneren (${symList()}) – oppgitt coin og dato for hvert tilfelle.`,
      'Kun data som var kjent på hver dato brukes (indikatorer beregnes bare bakover; vendepunkter regnes som kjent først 5 dager etter).',
      'Ikke-overlappende: maks ett tilfelle per coin per 30 dager og minst 10 dager mellom alle tilfeller. Usikkerheten beregnes ut fra antall uavhengige 30-dagersperioder.',
      `Utelatt: ${NAMES[c.sym]} sine siste 60 dager, og tilfeller der 30-dagersutfallet ikke er kjent ennå.`].forEach(t => filt.append(el('li', null, t)));
@@ -455,46 +460,76 @@
     const s = an.stats;
     const tw = el('div', 'ai-tablewrap'); const tb = el('table', 'ai-table');
     const h = el('tr'); ['Etter', 'Andel positive (90 %-intervall)', 'Median', 'Snitt', 'Beste', 'Dårligste'].forEach((x, i) => h.append(el('th', i ? null : 'l', x))); const th = el('thead'); th.append(h); tb.append(th);
-    const bd = el('tbody'); [['1 dag', s.h1], ['7 dager', s.h7], ['30 dager', s.h30]].forEach(([lab, v]) => { const tr = el('tr'); tr.append(el('td', 'l', lab), el('td', null, shareCi(v.pos, v.ci)), el('td', sgnCls(v.median), pct(v.median)), el('td', sgnCls(v.mean), pct(v.mean)), el('td', 'ai-pos', pct(v.best)), el('td', 'ai-neg', pct(v.worst))); bd.append(tr); }); tb.append(bd); tw.append(tb);
+    const longRows = (an.hz || []).filter(z => z.H > 30 && z.n).map(z => [`${HZL[z.H]} (n=${z.n})`, { pos: z.pos, ci: z.ci, median: z.ret.q50, mean: z.mean, best: z.best, worst: z.worst }]);
+    const bd = el('tbody'); [['1 dag', s.h1], ['7 dager', s.h7], ['30 dager', s.h30], ...longRows].forEach(([lab, v]) => { const tr = el('tr'); tr.append(el('td', 'l', lab), el('td', null, shareCi(v.pos, v.ci)), el('td', sgnCls(v.median), pct(v.median)), el('td', sgnCls(v.mean), pct(v.mean)), el('td', 'ai-pos', pct(v.best)), el('td', 'ai-neg', pct(v.worst))); bd.append(tr); }); tb.append(bd); tw.append(tb);
     const kv = el('dl', 'ai-kv'); const row = (a, b, cls) => { kv.append(el('dt', null, a), el('dd', cls, b)); };
     row('Største nedtur underveis (median / verste)', `${pct(s.mae.median)} / ${pct(s.mae.worst)}`, 'ai-neg');
     row('Største oppgang underveis (median)', pct(s.mfe.median), 'ai-pos');
     row('Nærmeste støtte brutt (dagslukk under) innen 30 d', share(s.supBroke));
     row('Nærmeste motstand brutt (dagslukk over) innen 30 d', share(s.resBroke));
     row(`Alle dager i samme regime: andel positive etter 30 d (n=${an.base.n})`, `${share(an.base.pos)} · median ${pct(an.base.median)}`);
+    (an.hz || []).filter(z => z.H > 30 && z.base.n).forEach(z => row(`Alle dager i samme regime: andel positive etter ${HZL[z.H]} (n=${z.base.n})`, `${share(z.base.pos)} · median ${pct(z.base.median)}`));
     row(`${NAMES[c.sym]} alene i samme regime (n=${an.baseOwn.n})`, `${share(an.baseOwn.pos)} · median ${pct(an.baseOwn.median)}`);
     row('Bitcoin i de samme periodene (median 30 d)', pct(s.btc30));
-    box.replaceChildren(el('h2', null, 'Historiske resultater'), el('p', 'ai-muted', 'Avkastning fra dagslukk på signaldagen. «Andel positive» er andelen tilfeller med høyere pris; intervallet tar hensyn til at tilfellene ikke er helt uavhengige.'), tw, kv);
+    box.replaceChildren(el('h2', null, 'Historiske resultater'), el('p', 'ai-muted', 'Avkastning fra dagslukk på signaldagen. «Andel positive» er andelen tilfeller med høyere pris; intervallet tar hensyn til at tilfellene ikke er helt uavhengige. For 3–12 måneder teller bare tilfeller der utfallet er kjent (n), og tilfeller som ligger nærmere hverandre enn horisonten regnes som én periode – derfor er intervallene der mye bredere.'), tw, kv);
   }
   const qnt = (arr, q) => { const a = arr.filter(v => v != null && isFinite(v)).sort((x, y) => x - y); if (!a.length) return null; const p = (a.length - 1) * q, lo = Math.floor(p), hi = Math.ceil(p); return a[lo] + (a[hi] - a[lo]) * (p - lo); };
+  const FAN_TITLE = { 7: 'Mulig kursbane neste uke', 30: 'Mulig kursbane de neste 30 dagene', 90: 'Mulig kursbane de neste 3 månedene', 180: 'Mulig kursbane de neste 6 månedene', 365: 'Mulig kursbane de neste 12 månedene' };
+  const FAN_PAST = { 7: 60, 30: 60, 90: 90, 180: 180, 365: 365 };
+  const FAN_TICKS = { 7: [-60, -30, 0, 7], 30: [-60, -30, 0, 10, 20, 30], 90: [-90, -45, 0, 30, 60, 90], 180: [-180, -90, 0, 60, 120, 180], 365: [-365, -180, 0, 90, 180, 270, 365] };
+  const dayLab = v => v === 0 ? 'I dag' : (v > 0 ? '+' : '−') + (Math.abs(v) >= 85 ? Math.round(Math.abs(v) / 30.4) + ' mnd' : Math.abs(v) + ' d');
+  const inDays = j => j === 0 ? 'I dag' : j > 0 ? (j >= 85 ? `Om ${j} dager (ca. ${nf(j / 30.4, { maximumFractionDigits: 1 })} mnd)` : `Om ${j} dager`) : `${-j} dager siden`;
+  const hzNow = () => HZ.includes(state.hz) ? state.hz : 30;
+  const MIN_FAN_N = 5;
+  function drawHz(c) {
+    const seg = document.getElementById('hs-fan-hz'); if (!seg) return; const H = hzNow();
+    seg.replaceChildren(...HZ.map(h => { const b = el('button', null, HZS[h]); b.type = 'button'; b.title = HZL[h]; b.setAttribute('aria-pressed', H === h ? 'true' : 'false'); b.addEventListener('click', () => { state.hz = h; drawHz(c); drawFan(c); renderProjection(c); }); return b; }));
+    const t = document.getElementById('hs-fan-title'); if (t) t.textContent = FAN_TITLE[H];
+  }
   function drawFan(c) {
-    const box = document.getElementById('hs-fan'); box.querySelector('svg')?.remove(); box.querySelector('.ai-tip')?.remove(); const an = c.analog; if (!an || !an.ok) return;
-    const mode = state.fanMode || 'kurs', P0 = c.price, toP = v => P0 * (1 + v / 100), k = c.keys || {};
+    const box = document.getElementById('hs-fan'); box.querySelector('svg')?.remove(); box.querySelector('.ai-tip')?.remove(); box.querySelector('.ai-fan-note')?.remove(); const an = c.analog; if (!an || !an.ok) return;
+    drawHz(c);
+    const H = hzNow(), mode = state.fanMode || 'kurs', P0 = c.price, toP = v => P0 * (1 + v / 100), k = c.keys || {};
     const ms = document.getElementById('hs-fan-mode');
     ms.replaceChildren(...[['kurs', 'Kurs'], ['pct', 'Prosent']].map(([m, lab]) => { const b = el('button', null, lab); b.type = 'button'; b.setAttribute('aria-pressed', mode === m ? 'true' : 'false'); b.addEventListener('click', () => { state.fanMode = m; drawFan(c); }); return b; }));
-    const W = Math.max(300, box.clientWidth), H = W < 600 ? 280 : 340; box.style.minHeight = H + 'px';
-    const today = an.today.map((v, i, a) => ({ j: i - (a.length - 1), v: (v - 1) * 100 }));
-    const fan = an.fan.map(f => ({ j: f.j, q10: (f.q10 - 1) * 100, q25: (f.q25 - 1) * 100, q50: (f.q50 - 1) * 100, q75: (f.q75 - 1) * 100, q90: (f.q90 - 1) * 100 }));
-    const pre = an.preFan.map(f => ({ j: f.j, v: f.q50 == null ? null : (f.q50 - 1) * 100 }));
+    const W = Math.max(300, box.clientWidth), Hh = W < 600 ? 280 : 340; box.style.minHeight = Hh + 'px';
+    // lang bane (0–365 d) hvis motoren har levert den, ellers 30-dagersbanen
+    const src = an.fanL || an.fan.map(f => ({ ...f, n: an.n }));
+    const fanAll = src.filter(f => f.j <= H && (f.n == null || f.n >= MIN_FAN_N) && f.q50 != null);
+    const Hend = fanAll.length ? fanAll[fanAll.length - 1].j : 0;
+    const past = FAN_PAST[H];
+    const todaySrc = an.todayL || an.today;
+    const today = todaySrc.slice(-(past + 1)).map((v, i, a) => ({ j: i - (a.length - 1), v: (v - 1) * 100 }));
+    const fan = fanAll.map(f => ({ j: f.j, n: f.n, q10: (f.q10 - 1) * 100, q25: (f.q25 - 1) * 100, q50: (f.q50 - 1) * 100, q75: (f.q75 - 1) * 100, q90: (f.q90 - 1) * 100 }));
+    const pre = H <= 30 ? an.preFan.map(f => ({ j: f.j, v: f.q50 == null ? null : (f.q50 - 1) * 100 })) : [];
     const all = [...today.map(d => d.v), ...fan.flatMap(f => [f.q10, f.q90]), ...pre.map(d => d.v)].filter(v => v != null && isFinite(v));
     let lo = Math.min(...all), hi = Math.max(...all);
-    // nøkkelnivåer som ligger i nærheten tas med i grafen
     const lvls = [[k.nextUp, 'Neste motstand', 'var(--color-bad)'], [k.majUp, 'Avgjørende motstand', 'var(--color-bad)'], [k.mustHold, 'Må holde', 'var(--color-ok)'], [k.majDn, 'Avgjørende støtte', 'var(--color-ok)']]
       .filter(([l]) => l && l.d != null && l.d > lo - (hi - lo) * 0.25 && l.d < hi + (hi - lo) * 0.25);
     const seenL = new Set(); const lv = lvls.filter(([l]) => { const key = Math.round(l.d * 10); if (seenL.has(key)) return false; seenL.add(key); return true; });
     lv.forEach(([l]) => { lo = Math.min(lo, l.d); hi = Math.max(hi, l.d); });
-    const pad = (hi - lo) * 0.06;
-    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img').attr('aria-label', 'Dagens kurs og mulig kursbane basert på lignende historiske forløp');
-    const y = d3.scaleLinear([lo - pad, hi + pad], [H - 26, 10]);
-    let ty, fmt;
-    if (mode === 'kurs') { const yp = d3.scaleLinear([toP(lo - pad), toP(hi + pad)], [0, 1]); ty = yp.ticks(6).map(p => (p / P0 - 1) * 100); fmt = v => price(toP(v)); }
-    else { y.nice(); ty = y.ticks(6); fmt = v => pct(v, 0); }
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${Hh}`).attr('role', 'img').attr('aria-label', `Dagens kurs og mulig kursbane ${HZL[H]} fram, basert på lignende historiske forløp`);
+    // fra 3 måneder: logaritmisk skala, ellers blir nedsiden klemt flat av de største oppturene
+    const logY = H >= 90; let y, ty, fmt;
+    // pene tick-verdier på loggskala (1–2–5-mønster), maks 7
+    const logTicks = (a, b) => { const sets = [[1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8, 9], [1, 1.5, 2, 3, 5, 7], [1, 2, 5], [1, 3], [1]]; let best = [a, b];
+      for (const st of sets) { const out = []; for (let k = Math.floor(Math.log10(a)) - 1; k <= Math.ceil(Math.log10(b)); k++) for (const m of st) { const v = m * Math.pow(10, k); if (v >= a && v <= b) out.push(+v.toPrecision(6)); }
+        if (out.length <= 7 && out.length >= 3) return out; if (out.length >= 2) best = out; } return best; };
+    if (logY) { const L0 = Math.log(1 + lo / 100), L1 = Math.log(1 + hi / 100), lp = (L1 - L0) * 0.06; const ys = d3.scaleLog([Math.exp(L0 - lp), Math.exp(L1 + lp)], [Hh - 26, 10]);
+      y = v => ys(1 + v / 100);
+      if (mode === 'kurs') { ty = logTicks(P0 * Math.exp(L0 - lp), P0 * Math.exp(L1 + lp)).map(p => (p / P0 - 1) * 100); fmt = v => price(toP(v)); }
+      else { ty = logTicks(Math.exp(L0 - lp), Math.exp(L1 + lp)).map(r => (r - 1) * 100); fmt = v => pct(v, 0); } }
+    else { const pad = (hi - lo) * 0.06; const yl = d3.scaleLinear([lo - pad, hi + pad], [Hh - 26, 10]); y = yl;
+      if (mode === 'kurs') { const yp = d3.scaleLinear([toP(lo - pad), toP(hi + pad)], [0, 1]); ty = yp.ticks(6).map(p => (p / P0 - 1) * 100); fmt = v => price(toP(v)); }
+      else { yl.nice(); ty = yl.ticks(6); fmt = v => pct(v, 0); } }
     const m = { l: measure(svg, ty.map(fmt)) + 12, r: 24 };
-    const x = d3.scaleLinear([-60, 30], [m.l, W - m.r]);
+    const xEnd = Math.max(Hend, 1);
+    const x = d3.scaleLinear([-past, xEnd], [m.l, W - m.r]);
+    let xt = FAN_TICKS[H].filter(v => v <= xEnd); if (W < 600) xt = xt.filter((v, i, a) => v === 0 || i === 1 || i === a.length - 1);
     svg.append('g').selectAll('line').data(ty).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
-    const ya = svg.append('g').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).tickValues(ty).tickFormat(fmt).tickSize(0)); ya.select('.domain').remove(); axisStyle(ya);
-    const xa = svg.append('g').attr('transform', `translate(0,${H - 26})`).call(d3.axisBottom(x).tickValues(W < 600 ? [-60, -30, 0, 30] : [-60, -30, 0, 10, 20, 30]).tickFormat(v => v === 0 ? 'I dag' : (v > 0 ? '+' : '−') + Math.abs(v) + ' d').tickSizeOuter(0)); xa.select('.domain').attr('stroke', 'var(--cds-chart-axis)'); axisStyle(xa);
-    svg.append('rect').attr('x', x(0)).attr('width', x(30) - x(0)).attr('y', 10).attr('height', H - 36).attr('fill', 'var(--color-bg)');
+    const ya = svg.append('g'); ty.forEach(v => ya.append('text').attr('x', m.l - 8).attr('y', y(v)).attr('dy', '0.32em').attr('text-anchor', 'end').text(fmt(v))); axisStyle(ya);
+    const xa = svg.append('g').attr('transform', `translate(0,${Hh - 26})`).call(d3.axisBottom(x).tickValues(xt).tickFormat(dayLab).tickSizeOuter(0)); xa.select('.domain').attr('stroke', 'var(--cds-chart-axis)'); axisStyle(xa);
+    svg.append('rect').attr('x', x(0)).attr('width', x(xEnd) - x(0)).attr('y', 10).attr('height', Hh - 36).attr('fill', 'var(--color-bg)');
     svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(0)).attr('y2', y(0)).attr('stroke', 'var(--cds-chart-axis)');
     const lvLab = [];
     lv.forEach(([l, lab, col]) => { svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(l.d)).attr('y2', y(l.d)).attr('stroke', col).attr('stroke-width', 1.2).attr('stroke-dasharray', '6 4').attr('opacity', 0.8); lvLab.push({ y: y(l.d) - 4, col, t: `${lab} ${price(l.p)}` }); });
@@ -502,45 +537,56 @@
     svg.append('path').datum(fan).attr('d', d3.area().x(d => x(d.j)).y0(d => y(d.q10)).y1(d => y(d.q90))).attr('fill', dash.colors[0]).attr('fill-opacity', 0.12);
     svg.append('path').datum(fan).attr('d', d3.area().x(d => x(d.j)).y0(d => y(d.q25)).y1(d => y(d.q75))).attr('fill', dash.colors[0]).attr('fill-opacity', 0.22);
     svg.append('path').datum(fan).attr('d', d3.line().x(d => x(d.j)).y(d => y(d.q50))).attr('fill', 'none').attr('stroke', dash.colors[0]).attr('stroke-width', 2).attr('stroke-dasharray', '5 3');
-    svg.append('path').datum(pre.filter(d => d.v != null)).attr('d', d3.line().x(d => x(d.j)).y(d => y(d.v))).attr('fill', 'none').attr('stroke', 'var(--cds-chart-muted)').attr('stroke-width', 1.5).attr('stroke-dasharray', '5 3');
-    svg.append('path').datum(today).attr('d', d3.line().x(d => x(d.j)).y(d => y(d.v))).attr('fill', 'none').attr('stroke', 'var(--color-fg)').attr('stroke-width', 2.2).attr('stroke-linejoin', 'round');
+    if (pre.length) svg.append('path').datum(pre.filter(d => d.v != null)).attr('d', d3.line().x(d => x(d.j)).y(d => y(d.v))).attr('fill', 'none').attr('stroke', 'var(--cds-chart-muted)').attr('stroke-width', 1.5).attr('stroke-dasharray', '5 3');
+    svg.append('path').datum(today).attr('d', d3.line().x(d => x(d.j)).y(d => y(d.v))).attr('fill', 'none').attr('stroke', 'var(--color-fg)').attr('stroke-width', H > 90 ? 1.6 : 2.2).attr('stroke-linejoin', 'round');
     svg.append('circle').attr('cx', x(0)).attr('cy', y(0)).attr('r', 4).attr('fill', 'var(--color-fg)');
     lvLab.forEach(L => svg.append('text').attr('x', m.l + 4).attr('y', L.y).attr('font-size', 'var(--cds-font-size-caption)').attr('fill', L.col).attr('paint-order', 'stroke').attr('stroke', 'var(--color-panel)').attr('stroke-width', 4).attr('stroke-linejoin', 'round').text(L.t));
-    const lf = fan[fan.length - 1]; const ends = [['q90', 'Høy'], ['q50', 'Median'], ['q10', 'Lav']].map(([kk, lab]) => ({ y: y(lf[kk]) - 5, t: mode === 'kurs' ? `${lab} ${price(toP(lf[kk]))}` : `${lab} ${pct(lf[kk], 0)}` }));
-    for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 14) ends[i].y = ends[i - 1].y + 14;
-    ends.forEach(e => svg.append('text').attr('x', x(30) - 4).attr('y', e.y).attr('text-anchor', 'end').attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg-muted)').attr('paint-order', 'stroke').attr('stroke', 'var(--color-panel)').attr('stroke-width', 3).text(e.t));
+    const lf = fan[fan.length - 1];
+    if (lf) { const ends = [['q90', 'Høy'], ['q50', 'Median'], ['q10', 'Lav']].map(([kk, lab]) => ({ y: y(lf[kk]) - 5, t: mode === 'kurs' ? `${lab} ${price(toP(lf[kk]))}` : `${lab} ${pct(lf[kk], 0)}` }));
+      for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 14) ends[i].y = ends[i - 1].y + 14;
+      ends.forEach(e => svg.append('text').attr('x', x(xEnd) - 4).attr('y', e.y).attr('text-anchor', 'end').attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg-muted)').attr('paint-order', 'stroke').attr('stroke', 'var(--color-panel)').attr('stroke-width', 3).text(e.t)); }
     const tip = tipOf(box); const both = v => `${price(toP(v))} (${pct(v)})`;
-    svg.append('rect').attr('x', m.l).attr('y', 0).attr('width', W - m.l - m.r).attr('height', H).attr('fill', 'transparent')
-      .on('pointermove', ev => { const [px] = d3.pointer(ev); const j = Math.round(x.invert(px)); const lines = [el('div', 'd', j === 0 ? 'I dag' : (j > 0 ? `Om ${j} dager` : `${-j} dager siden`))];
+    svg.append('rect').attr('x', m.l).attr('y', 0).attr('width', W - m.l - m.r).attr('height', Hh).attr('fill', 'transparent')
+      .on('pointermove', ev => { const [px] = d3.pointer(ev); const j = Math.round(x.invert(px)); const lines = [el('div', 'd', inDays(j))];
         if (j <= 0) { const t = today.find(d => d.j === j); const p = pre.find(d => d.j === j); if (t) lines.push(el('div', null, `Kurs: ${both(t.v)}`)); if (p && p.v != null) lines.push(el('div', 'ai-muted', `Median i lignende tilfeller: ${pct(p.v)}`)); }
-        else { const f = fan.find(d => d.j === j); if (f) lines.push(el('div', null, `Median ${both(f.q50)}`), el('div', 'ai-muted', `Halvparten mellom ${price(toP(f.q25))} og ${price(toP(f.q75))}`), el('div', 'ai-muted', `8 av 10 mellom ${price(toP(f.q10))} og ${price(toP(f.q90))}`)); }
+        else { const f = fan.find(d => d.j === j); if (f) { lines.push(el('div', null, `Median ${both(f.q50)}`), el('div', 'ai-muted', `Halvparten mellom ${price(toP(f.q25))} og ${price(toP(f.q75))}`), el('div', 'ai-muted', `8 av 10 mellom ${price(toP(f.q10))} og ${price(toP(f.q90))}`)); if (f.n != null) lines.push(el('div', 'ai-muted', `${f.n} av ${an.n} tilfeller har kjent utfall her`)); } }
         tip.replaceChildren(...lines); const kx = box.clientWidth / W; place(box, tip, x(j) * kx, 60); })
       .on('pointerleave', () => { tip.hidden = true; });
+    if (logY) box.append(el('p', 'ai-muted ai-fan-note', 'Loggskala: like store prosentvise endringer opp og ned tar like mye plass.'));
+    if (lf && (Hend < H || (lf.n != null && lf.n < an.n))) {
+      const msg = Hend < H ? `Banen stopper etter ${Hend} dager fordi for få av de lignende tilfellene er gamle nok til at utfallet ${HZL[H]} fram er kjent.` : `Ved slutten av perioden bygger banen på ${lf.n} av ${an.n} tilfeller – de nyeste er for ferske til at utfallet ${HZL[H]} fram er kjent ennå.`;
+      box.append(el('p', 'ai-muted ai-fan-note', msg)); }
     const lg = document.getElementById('hs-fan-legend'); const it = (sty, txt) => { const s = el('span'); const i = el('i'); Object.assign(i.style, sty); s.append(i, document.createTextNode(txt)); return s; };
-    lg.replaceChildren(it({ color: 'var(--color-fg)' }, `${NAMES[c.sym]} siste 60 dager`), it({ color: 'var(--cds-chart-muted)', borderTopStyle: 'dashed' }, 'Median før, lignende tilfeller'), it({ color: dash.colors[0], borderTopStyle: 'dashed' }, 'Median videre'), it({ background: dash.colors[0], opacity: '.3', height: '10px', border: '0' }, 'Halvparten / 8 av 10 tilfeller'));
+    lg.replaceChildren(...[it({ color: 'var(--color-fg)' }, `${NAMES[c.sym]} siste ${today.length - 1} dager`), pre.length ? it({ color: 'var(--cds-chart-muted)', borderTopStyle: 'dashed' }, 'Median før, lignende tilfeller') : null, it({ color: dash.colors[0], borderTopStyle: 'dashed' }, 'Median videre'), it({ background: dash.colors[0], opacity: '.3', height: '10px', border: '0' }, 'Halvparten / 8 av 10 tilfeller')].filter(Boolean));
   }
   function renderProjection(c) {
-    const box = document.getElementById('hs-proj'); const an = c.analog; if (!an || !an.ok || !an.cases.length) { box.replaceChildren(); return; }
-    const P0 = c.price, cs = an.cases, k = c.keys || {}, n = cs.length;
-    const row = H => { const v = cs.map(x => x.post[H]).filter(x => x != null); return { H, q10: qnt(v, 0.1), q25: qnt(v, 0.25), q50: qnt(v, 0.5), q75: qnt(v, 0.75), q90: qnt(v, 0.9) }; };
-    const R = [7, 14, 30].map(row), r30 = R[2];
-    const up = cs.map(x => x.up30), dn = cs.map(x => x.dn30);
-    const topMed = qnt(up, 0.5), botMed = qnt(dn, 0.5);
-    const lead = el('p', 'ai-summary', `Hvis ${NAMES[c.sym]} utvikler seg som de ${n} lignende tilfellene, ender kursen om 30 dager typisk mellom ${price(P0 * r30.q25)} og ${price(P0 * r30.q75)} (median ${price(P0 * r30.q50)}, ${pct((r30.q50 - 1) * 100)}). Underveis var den høyeste kursen typisk ${price(P0 * (1 + topMed / 100))} (${pct(topMed)}) og den laveste ${price(P0 * (1 + botMed / 100))} (${pct(botMed)}).`);
+    const box = document.getElementById('hs-proj'); const an = c.analog; if (!an || !an.ok || !an.cases.length || !an.hz) { box.replaceChildren(); return; }
+    const P0 = c.price, cs = an.cases, k = c.keys || {}, H = hzNow();
+    const Z = an.hz.find(z => z.H === H) || an.hz.find(z => z.H === 30);
+    const cp = v => price(P0 * (1 + v / 100));
+    const lead = Z.n ? el('p', 'ai-summary', `Hvis ${NAMES[c.sym]} utvikler seg som de ${Z.n} lignende tilfellene der utfallet er kjent, ender kursen om ${HZL[H]} typisk mellom ${cp(Z.ret.q25)} og ${cp(Z.ret.q75)} (median ${cp(Z.ret.q50)}, ${pct(Z.ret.q50)}). Underveis var den høyeste kursen typisk ${cp(Z.up.q50)} (${pct(Z.up.q50)}) og den laveste ${cp(Z.dn.q50)} (${pct(Z.dn.q50)}). Prisen var høyere i ${share(Z.pos)} av tilfellene, mot ${share(Z.base.pos)} for alle dager i samme markedsregime.`)
+      : el('p', 'ai-summary', `Ingen av de lignende tilfellene er gamle nok til at utfallet om ${HZL[H]} er kjent.`);
     const tw = el('div', 'ai-tablewrap'); const tb = el('table', 'ai-table'); const hr = el('tr');
     tb.classList.add('ai-proj');
-    ['Om', 'Median', 'Halvparten mellom', '8 av 10 mellom'].forEach((h, i) => hr.append(el('th', i ? null : 'l', h))); const th = el('thead'); th.append(hr); tb.append(th);
-    const bd = el('tbody'); const cell = r => price(P0 * r), cp = v => price(P0 * (1 + v / 100));
-    R.forEach(r => { const tr = el('tr'); tr.append(el('td', 'l', `${r.H} dager`), el('td', sgnCls(r.q50 - 1), `${cell(r.q50)} (${pct((r.q50 - 1) * 100)})`), el('td', null, `${cell(r.q25)}–${cell(r.q75)}`), el('td', null, `${cell(r.q10)}–${cell(r.q90)}`)); bd.append(tr); });
-    [['Høyeste underveis', up, 'ai-pos'], ['Laveste underveis', dn, 'ai-neg']].forEach(([lab, v, cls]) => { const md = qnt(v, 0.5); const tr = el('tr'); tr.append(el('td', 'l', lab), el('td', cls, `${cp(md)} (${pct(md)})`), el('td', null, `${cp(qnt(v, 0.25))}–${cp(qnt(v, 0.75))}`), el('td', null, `${cp(qnt(v, 0.1))}–${cp(qnt(v, 0.9))}`)); bd.append(tr); });
+    ['Om', 'Median', 'Halvparten mellom', '8 av 10 mellom', 'Tilfeller'].forEach((h, i) => hr.append(el('th', i ? null : 'l', h))); const th = el('thead'); th.append(hr); tb.append(th);
+    const bd = el('tbody');
+    an.hz.forEach(z => { const tr = el('tr'); if (z.H === H) tr.style.fontWeight = '600';
+      if (!z.n) { tr.append(el('td', 'l', HZL[z.H]), el('td', 'ai-muted', '–'), el('td', null, '–'), el('td', null, '–'), el('td', null, '0')); bd.append(tr); return; }
+      tr.append(el('td', 'l', HZL[z.H]), el('td', sgnCls(z.ret.q50), `${cp(z.ret.q50)} (${pct(z.ret.q50)})`), el('td', null, `${cp(z.ret.q25)}–${cp(z.ret.q75)}`), el('td', null, `${cp(z.ret.q10)}–${cp(z.ret.q90)}`), el('td', null, `${z.n} (≈${z.nEff} per.)`)); bd.append(tr); });
+    if (Z.n) [[`Høyeste underveis (${HZS[H]})`, Z.up, 'ai-pos'], [`Laveste underveis (${HZS[H]})`, Z.dn, 'ai-neg']].forEach(([lab, q, cls]) => { const tr = el('tr'); tr.append(el('td', 'l', lab), el('td', cls, `${cp(q.q50)} (${pct(q.q50)})`), el('td', null, `${cp(q.q25)}–${cp(q.q75)}`), el('td', null, `${cp(q.q10)}–${cp(q.q90)}`), el('td', null, String(Z.n))); bd.append(tr); });
     tb.append(bd); tw.append(tb);
-    // hvor ofte ble nøkkelnivåene nådd innen 30 dager i de lignende tilfellene
+    // hvor ofte ble nøkkelnivåene nådd innen valgt horisont
+    const known = cs.filter(x => x.fwd && x.fwd[H]); const n = known.length;
+    const up = known.map(x => x.fwd[H][1]), dn = known.map(x => x.fwd[H][2]);
     const reach = [[k.nextUp, 'Neste motstand', 1], [k.majUp, 'Avgjørende motstand', 1], [k.mustHold, 'Må holde (støtte)', -1], [k.majDn, 'Avgjørende støtte', -1]]
       .filter(([l]) => l && l.d != null).filter(([l], i, a) => a.findIndex(([m]) => m.p === l.p) === i)
-      .map(([l, lab, dir]) => ({ lab, l, dir, share: (dir > 0 ? up.filter(v => v >= l.d) : dn.filter(v => v <= l.d)).length / n }));
-    const ul = el('ul', 'ai-list'); reach.forEach(r => { const li = el('li'); li.append(el('b', r.dir > 0 ? 'ai-pos' : 'ai-neg', `${r.lab} ${price(r.l.p)} (${pct(r.l.d)})`), document.createTextNode(`: nådd innen 30 dager i ${Math.round(r.share * 100)} % av de lignende tilfellene (${Math.round(r.share * n)} av ${n}).`)); ul.append(li); });
-    const warn = an.reliability !== 'ok' ? el('div', 'ai-warnbox', `Utvalget er ${an.reliability === 'for-lite' ? 'for lite' : 'lite'} (ca. ${an.nEff} uavhengige perioder), så tallene er usikre.`) : null;
-    box.replaceChildren(...[el('h3', null, 'Hvor høyt eller lavt kan det gå?'), lead, warn, tw, el('h3', null, 'Ble nivåene nådd?'), ul, el('p', 'ai-muted', `Basert på hva som faktisk skjedde etter de ${n} mest like situasjonene i historikken (BTC, XRP, POL og SAND), regnet fra dagens kurs ${price(P0)}. «8 av 10 mellom» er 10.–90. persentil. Historien gjentar seg ikke nøyaktig – bruk dette som et bilde av spredningen, ikke som en prognose.`)].filter(Boolean));
+      .map(([l, lab, dir]) => ({ lab, l, dir, share: n ? (dir > 0 ? up.filter(v => v >= l.d) : dn.filter(v => v <= l.d)).length / n : null }));
+    const ul = el('ul', 'ai-list'); reach.forEach(r => { const li = el('li'); li.append(el('b', r.dir > 0 ? 'ai-pos' : 'ai-neg', `${r.lab} ${price(r.l.p)} (${pct(r.l.d)})`), document.createTextNode(n ? `: nådd innen ${HZL[H]} i ${Math.round(r.share * 100)} % av de lignende tilfellene (${Math.round(r.share * n)} av ${n}).` : ': ingen tilfeller med kjent utfall.')); ul.append(li); });
+    let warn = null;
+    if (Z.nEff < 10) warn = el('div', 'ai-warnbox', `Estimatet for ${HZL[H]} bygger bare på ca. ${Z.nEff} uavhengige perioder (${Z.n} tilfeller). Det er svært usikkert – se på det som et grovt bilde av spredningen.`);
+    else if (an.reliability !== 'ok') warn = el('div', 'ai-warnbox', `Utvalget er ${an.reliability === 'for-lite' ? 'for lite' : 'lite'} (ca. ${an.nEff} uavhengige perioder), så tallene er usikre.`);
+    const longNote = H > 30 ? el('p', 'ai-muted', 'Tilfellene er valgt ut fra tekniske kjennetegn på dagsgrafen. Jo lengre fram du ser, jo mer avhenger utfallet av markedssyklus, nyheter og makro som ikke er med i sammenligningen – 6–12-månederstallene sier mest om hvor stor spredningen har vært.') : null;
+    box.replaceChildren(...[el('h3', null, 'Hvor høyt eller lavt kan det gå?'), lead, warn, tw, el('h3', null, `Ble nivåene nådd innen ${HZL[H]}?`), ul, longNote, el('p', 'ai-muted', `Basert på hva som faktisk skjedde etter de mest like situasjonene i historikken (${symList()}), regnet fra dagens kurs ${price(P0)}. «8 av 10 mellom» er 10.–90. persentil. «Tilfeller» viser hvor mange som har kjent utfall for horisonten, og omtrent hvor mange uavhengige perioder de utgjør. Historien gjentar seg ikke nøyaktig – bruk dette som et bilde av spredningen, ikke som en prognose.`)].filter(Boolean));
   }
   function miniPath(box, cs, today, opt = {}) {
     box.replaceChildren(); const W = Math.max(200, box.clientWidth || 240), H = opt.h || 110; box.style.height = H + 'px';
@@ -618,7 +664,259 @@
     const tw2 = el('div', 'ai-tablewrap'); const t2 = el('table', 'ai-table'); const h2 = el('tr'); ['Dato', 'Signal', 'Pris', '7 d etter', '30 d etter', 'Maks opp / ned'].forEach((h, i) => h2.append(el('th', i < 2 ? 'l' : (i === 5 ? 'ai-hide-sm' : null), h))); const th2 = el('thead'); th2.append(h2); t2.append(th2);
     const b2 = el('tbody'); ev.forEach(e => { const tr = el('tr'); const up = ETYPES.find(x => x[0] === e.type)[2] > 0; tr.append(el('td', 'l', dfmt(dateOf(e.date))), el('td', 'l ' + (up ? 'ai-pos' : 'ai-neg'), EVL[e.type]), el('td', null, price(e.price)), el('td', sgnCls(e.r7), e.r7 == null ? 'pågår' : pct(e.r7)), el('td', sgnCls(e.r30), e.r30 == null ? 'pågår' : pct(e.r30)), el('td', 'ai-hide-sm', e.up30 == null ? '–' : `${pct(e.up30)} / ${pct(e.dn30)}`)); b2.append(tr); });
     t2.append(b2); tw2.append(t2);
+    renderBacktest(c);
     rb.replaceChildren(el('h2', null, 'Signaler siste 12 måneder'), el('p', 'ai-muted', 'Tekniske hendelser i dagsgrafen. Resultatene måles fra dagslukk samme dag. Se dem i grafen under Teknisk analyse ved å slå på «Kjøps-/salgssignaler» og «Tekniske hendelser».'), ev.length ? tw2 : el('p', 'ai-muted', 'Ingen hendelser siste 12 måneder.'));
+  }
+
+  // ------------------------------------------------------------------ daytrading (live 15-min data direkte fra Binance i nettleseren)
+  const DTS = { live: {}, raw: {}, t: null, err: null, busy: false, timer: null, sel: null, calc: null };
+  const KL = 'https://data-api.binance.vision/api/v3/klines';
+  const hm = t => new Date(t).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
+  const hms = t => new Date(t).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const fR = (v, d = 2) => v == null || !isFinite(v) ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + nf(Math.abs(v), { minimumFractionDigits: d, maximumFractionDigits: d }) + ' R';
+  const DT_VERD = { good: ['Lønnsom i backtest', 'ai-pos'], bad: ['Tapte i backtest', 'ai-neg'], mixed: ['Blandet i backtest', 'ai-warn'], few: ['For få handler', 'ai-neu'] };
+  const DT_ST = { 'utløst': ['Utløst nå – inngang mulig', 'ai-pos'], 'åpen': ['Åpen handel', 'ai-warn'], 'følg': ['Følg med – ikke utløst', 'ai-neu'] };
+  async function dtFetch() {
+    if (DTS.busy || typeof DT === 'undefined') return; DTS.busy = true;
+    try { const now = Date.now();
+      await Promise.all(state.list.map(async s => {
+        const [a, b] = await Promise.all([fetch(`${KL}?symbol=${s}USDT&interval=15m&limit=500`, { cache: 'no-store' }).then(r => r.json()), fetch(`${KL}?symbol=${s}USDT&interval=1h&limit=300`, { cache: 'no-store' }).then(r => r.json())]);
+        if (!Array.isArray(a) || !Array.isArray(b)) throw new Error('Uventet svar fra Binance');
+        const forming = a.filter(x => x[6] >= now).pop(); const B = DT.bars(a.filter(x => x[6] < now)), H = DT.bars(b.filter(x => x[6] < now));
+        DTS.raw[s] = { B, forming: forming ? +forming[4] : null }; DTS.live[s] = DT.live(B, H); }));
+      DTS.t = Date.now(); DTS.err = null;
+    } catch (e) { console.error(e); DTS.err = 'Fikk ikke hentet 15-min data fra Binance. Prøver igjen om ett minutt.'; }
+    DTS.busy = false; if (tabNow() === 'daytrading') renderDay();
+  }
+  function dtTimer() { if (tabNow() === 'daytrading' && !document.hidden) { if (!DTS.timer) { DTS.timer = setInterval(() => { if (tabNow() === 'daytrading' && !document.hidden) dtFetch(); else { clearInterval(DTS.timer); DTS.timer = null; } }, 60e3); } } }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && tabNow() === 'daytrading') { dtFetch(); dtTimer(); } });
+  const dtBT = (sym, key) => { const D = dash.data('daytrade'); if (D.status !== 'ok' || !D.data) return null; const bt = D.data;
+    const c = bt.coins && bt.coins[sym] && bt.coins[sym][key]; if (c && c.verdict !== 'few') return { ...c, scope: NAMES[sym] }; const a = bt.ALL && bt.ALL[key]; return a ? { ...a, scope: 'alle coins' } : null; };
+  const curPrice = s => { const L = window.__live && window.__live[s]; if (L && L.p) return L.p; const r = DTS.raw[s]; return r && r.forming != null ? r.forming : DTS.live[s] && DTS.live[s].price; };
+  function renderDay() {
+    const c = cur(); if (!c) return; const s = c.sym;
+    if (!DTS.t && !DTS.busy) dtFetch(); dtTimer();
+    const L = DTS.live[s], head = document.getElementById('dt-head');
+    if (!L) { head.replaceChildren(el('h2', null, `Daytrading – ${NAMES[s]}`), el('p', 'ai-muted', DTS.err || 'Henter 15-minutters candles fra Binance …')); ['dt-setups', 'dt-chart', 'dt-calc', 'dt-watch', 'dt-recent', 'dt-bt'].forEach(id => document.getElementById(id).replaceChildren()); return; }
+    const P = curPrice(s);
+    // ---- topp: situasjonen nå
+    const ch = el('div', 'ai-chips'); const chip = (a, b, cls) => { const x = el('span', 'ai-chip'); x.append(el('span', 'ai-muted', a), el('b', cls, b)); ch.append(x); };
+    chip('Kurs', price(P)); chip('1t-trend', L.bias > 0 ? 'Opp' : L.bias < 0 ? 'Ned' : 'Sidelengs', L.bias > 0 ? 'ai-pos' : L.bias < 0 ? 'ai-neg' : 'ai-neu');
+    chip('VWAP i dag', `${price(L.vwap)} (${P >= L.vwap ? 'over' : 'under'})`, P >= L.vwap ? 'ai-pos' : 'ai-neg'); chip('RSI 15 min', nf(L.rsi, { maximumFractionDigits: 0 }));
+    chip('Bevegelse per 15 min (ATR)', nf(L.atrPct, { maximumFractionDigits: 2 }) + ' %'); chip('Dagens range', `${nf(L.today, { maximumFractionDigits: 1 })} % av snitt ${nf(L.adr, { maximumFractionDigits: 1 })} %`, L.adr && L.today > L.adr ? 'ai-warn' : null); chip('Økt', L.session);
+    const nxt = L.t + 2 * DT.M15;
+    head.replaceChildren(el('h2', null, `Daytrading – ${NAMES[s]}`), el('p', 'ai-muted', `15-minutters candles med 1-timestrenden som filter. Oppdatert ${DTS.t ? hms(DTS.t) : '–'} · siste lukkede candle ${hm(L.t + DT.M15)} · neste lukker ${hm(nxt)}. Data hentes direkte fra Binance hvert minutt mens fanen er åpen.`), ch,
+      el('p', 'ai-muted', `Gårsdagens topp ${price(L.pdh)} · bunn ${price(L.pdl)} · dagens topp ${price(L.dayHi)} · bunn ${price(L.dayLo)}`), ...(DTS.err ? [el('div', 'ai-warnbox', DTS.err)] : []),
+      el('div', 'ai-warnbox', 'Daytrading er høy risiko, og de fleste som driver med det taper penger over tid – særlig med giring. Bruk dette som et hjelpemiddel, test det med papirhandel først, og risiker aldri mer enn du har råd til å tape. Ikke finansiell rådgivning.'));
+    // ---- muligheter nå
+    const box = document.getElementById('dt-setups'); const order = { 'utløst': 0, 'åpen': 1, 'følg': 2 };
+    const items = L.items.slice().sort((a, b) => order[a.status] - order[b.status]);
+    if (!DTS.sel || DTS.sel.sym !== s || !items.some(x => x.key === DTS.sel.key && x.status === DTS.sel.status)) DTS.sel = items.length ? { sym: s, key: items[0].key, status: items[0].status } : null;
+    const grid = el('div', 'ai-cases');
+    items.forEach(x => { const T = DT.TYPES[x.type], b = dtBT(s, x.key), [stT, stC] = DT_ST[x.status]; const isSel = DTS.sel && DTS.sel.key === x.key && DTS.sel.status === x.status;
+      const card = el('div', 'ai-case'); if (isSel) card.style.borderColor = 'var(--cds-chart-axis)';
+      const top = el('div', 'ai-row'); top.append(el('span', 'ai-pill ' + (x.dir > 0 ? 'st-buy' : 'st-sell'), x.dir > 0 ? 'LONG' : 'SHORT'), el('b', 'ai-cap ' + stC, stT)); card.append(top, el('h3', null, T.label));
+      const e = x.entry != null ? x.entry : x.ref, r = x.risk, kv = el('dl', 'ai-kv'); const row = (a, v, cls) => kv.append(el('dt', null, a), el('dd', cls, v));
+      row(x.status === 'følg' ? 'Planlagt inngang' : x.status === 'åpen' ? 'Inngang' : 'Inngang (ca. nå)', price(e));
+      row('Stopp', `${price(x.stop)} (${pct(-x.dir * r / e * 100, 2)})`, 'ai-neg'); row('Mål 1R', `${price(e + x.dir * r)} (${pct(x.dir * r / e * 100, 2)})`, 'ai-pos'); row('Mål 2R (backtestens mål)', `${price(e + x.dir * 2 * r)} (${pct(x.dir * 2 * r / e * 100, 2)})`, 'ai-pos');
+      row('Gebyr + glidning', `ca. ${fR(-x.cost)} per handel`);
+      if (x.status === 'åpen') { const cr = (P - e) * x.dir / r; row('Nå', fR(cr), sgnCls(cr)); row('Tidsstopp', `om ${Math.max(0, DT.P.maxBars - (L.n - x.i))} × 15 min`); }
+      card.append(kv);
+      if (b && b.all && b.all.n) { const [vt, vc] = DT_VERD[b.verdict]; const p = el('p', 'ai-cap'); p.append(el('b', vc, vt + ': '), document.createTextNode(`${b.all.n} handler siste 12 mnd (${b.scope}), ${share(b.all.win)} treff, ${fR(b.all.exp)} per handel etter gebyr. Siste 4 mnd: ${b.oos.n ? fR(b.oos.exp) : '–'}.`)); card.append(p);
+        if (b.verdict === 'bad') card.append(el('p', 'ai-cap ai-neg', 'Dette oppsettet har tapt penger i backtesten – vær ekstra forsiktig.')); }
+      const ul = el('ul', 'ai-list ai-cap'); (x.why || []).forEach(w => ul.append(el('li', null, w))); card.append(ul);
+      const btns = el('div', 'ai-row'); const b1 = el('button', 'ai-btn', 'Vis i grafen'); b1.type = 'button'; b1.addEventListener('click', () => { DTS.sel = { sym: s, key: x.key, status: x.status }; renderDay(); document.getElementById('dt-chart').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+      const b2 = el('button', 'ai-btn', 'Bruk i kalkulatoren'); b2.type = 'button'; b2.addEventListener('click', () => { DTS.calc = { entry: e, stop: x.stop, dir: x.dir }; DTS.sel = { sym: s, key: x.key, status: x.status }; renderDay(); document.getElementById('dt-calc').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+      btns.append(b1, b2); card.append(btns); grid.append(card); });
+    box.replaceChildren(el('h2', null, 'Muligheter nå'), el('p', 'ai-muted', 'Utløst = alle kriteriene ble oppfylt på siste lukkede 15-min candle. Følg med = kursen er nær et oppsett, men det er ikke utløst. Stopp og mål er de samme som i backtesten: mål 2R, ellers ut etter 6 timer.'),
+      items.length ? grid : el('p', 'ai-summary', `Ingen oppsett nær akkurat nå. 1-timestrenden er ${L.bias > 0 ? 'opp' : L.bias < 0 ? 'ned' : 'sidelengs'}; neste nivåer er gårsdagens topp ${price(L.pdh)} og bunn ${price(L.pdl)}.`));
+    const sel = DTS.sel && items.find(x => x.key === DTS.sel.key && x.status === DTS.sel.status);
+    drawDayChart(s, L, sel); renderCalc(s, P, sel); renderDayWatch(s); renderDayRecent(s, L); renderDayBT(s);
+  }
+  function drawDayChart(s, L, sel) {
+    const box = document.getElementById('dt-chart'), B = DTS.raw[s].B, I = L.I;
+    const W = Math.max(300, box.clientWidth || 600), H = W < 600 ? 300 : 380, n = W < 600 ? 96 : 192, a0 = Math.max(0, B.N - n);
+    const idx = d3.range(a0, B.N);
+    const lv = [];
+    if (sel) { const e = sel.entry != null ? sel.entry : sel.ref, r = sel.risk; lv.push([e, 'Inngang', 'var(--color-fg)'], [sel.stop, 'Stopp', 'var(--color-bad)'], [e + sel.dir * r, '1R', 'var(--color-ok)'], [e + sel.dir * 2 * r, '2R', 'var(--color-ok)']); }
+    let lo = d3.min(idx, i => B.l[i]), hi = d3.max(idx, i => B.h[i]); const span = hi - lo;
+    idx.forEach(i => { for (const v of [I.pdh[i], I.pdl[i]]) if (v != null && v > lo - span * 0.3 && v < hi + span * 0.3) { lo = Math.min(lo, v); hi = Math.max(hi, v); } });
+    const lvv = lv.filter(([v]) => v != null && v > lo - span * 0.6 && v < hi + span * 0.6); lvv.forEach(([v]) => { lo = Math.min(lo, v); hi = Math.max(hi, v); });
+    box.replaceChildren(el('div', 'ai-row', null)); box.firstChild.append(el('h2', null, `15-min graf siste ${n / 4} timer`), el('span', 'ai-muted', sel ? `Viser ${sel.dir > 0 ? 'long' : 'short'}: ${DT.TYPES[sel.type].label}` : ''));
+    const wrap = el('div'); wrap.style.position = 'relative'; box.append(wrap);
+    const svg = d3.select(wrap).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img').attr('aria-label', `15-minutters kursgraf for ${NAMES[s]}`);
+    const y = d3.scaleLinear([lo - (hi - lo) * 0.04, hi + (hi - lo) * 0.04], [H - 24, 8]); const ty = y.ticks(6);
+    const m = { l: measure(svg, ty.map(price)) + 12, r: 8 };
+    const x = d3.scaleBand(idx, [m.l, W - m.r]).padding(0.25);
+    svg.append('g').selectAll('line').data(ty).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
+    const ya = svg.append('g'); ty.forEach(v => ya.append('text').attr('x', m.l - 6).attr('y', y(v)).attr('dy', '0.32em').attr('text-anchor', 'end').text(price(v))); axisStyle(ya);
+    const xt = idx.filter(i => (B.t[i] / DT.M15) % (n > 100 ? 24 : 16) === 0);
+    const xa = svg.append('g'); xt.forEach(i => xa.append('text').attr('x', x(i) + x.bandwidth() / 2).attr('y', H - 6).attr('text-anchor', 'middle').text(hm(B.t[i]))); axisStyle(xa);
+    // dagsskiller
+    idx.filter(i => i > a0 && I.day0[i] !== I.day0[i - 1]).forEach(i => svg.append('line').attr('x1', x(i)).attr('x2', x(i)).attr('y1', 8).attr('y2', H - 24).attr('stroke', 'var(--cds-chart-axis)').attr('stroke-dasharray', '2 3'));
+    const line = (arr, col, dashA, w = 1.4) => svg.append('path').datum(idx.filter(i => arr[i] != null)).attr('d', d3.line().x(i => x(i) + x.bandwidth() / 2).y(i => y(arr[i]))).attr('fill', 'none').attr('stroke', col).attr('stroke-width', w).attr('stroke-dasharray', dashA || null);
+    line(I.e20, dash.colors[0]); line(I.e50, dash.colors[1]);
+    // gårsdagens topp/bunn som trapp per døgn
+    const inR = v => v != null && v >= y.domain()[0] && v <= y.domain()[1];
+    for (const [arr, lab] of [[I.pdh, 'Gårsdagens topp'], [I.pdl, 'Gårsdagens bunn']]) {
+      svg.append('path').datum(idx).attr('d', d3.line().defined(i => inR(arr[i]) && (i === a0 || I.day0[i] === I.day0[i - 1])).x(i => x(i) + x.bandwidth() / 2).y(i => y(arr[i]))).attr('fill', 'none').attr('stroke', 'var(--cds-chart-muted)').attr('stroke-width', 1.2).attr('stroke-dasharray', '6 4');
+      const iL = B.N - 1; if (inR(arr[iL])) svg.append('text').attr('x', W - m.r - 4).attr('y', y(arr[iL]) - 4).attr('text-anchor', 'end').attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg-muted)').attr('paint-order', 'stroke').attr('stroke', 'var(--color-panel)').attr('stroke-width', 4).text(`${lab} ${price(arr[iL])}`); }
+    svg.append('path').datum(idx).attr('d', d3.line().defined(i => i === a0 || I.day0[i] === I.day0[i - 1]).x(i => x(i) + x.bandwidth() / 2).y(i => y(I.vwap[i]))).attr('fill', 'none').attr('stroke', dash.colors[2]).attr('stroke-width', 1.4).attr('stroke-dasharray', '4 3');
+    const g = svg.append('g'); idx.forEach(i => { const up = B.c[i] >= B.o[i], col = up ? 'var(--color-ok)' : 'var(--color-bad)', cx = x(i) + x.bandwidth() / 2;
+      g.append('line').attr('x1', cx).attr('x2', cx).attr('y1', y(B.h[i])).attr('y2', y(B.l[i])).attr('stroke', col);
+      g.append('rect').attr('x', x(i)).attr('width', x.bandwidth()).attr('y', y(Math.max(B.o[i], B.c[i]))).attr('height', Math.max(1, Math.abs(y(B.o[i]) - y(B.c[i])))).attr('fill', col); });
+    const labs = []; lvv.forEach(([v, lab, col]) => { svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(v)).attr('y2', y(v)).attr('stroke', col).attr('stroke-dasharray', '6 4').attr('stroke-width', 1.2); labs.push({ y: y(v) - 4, t: `${lab} ${price(v)}`, col }); });
+    labs.sort((p, q) => p.y - q.y); for (let i = 1; i < labs.length; i++) if (labs[i].y - labs[i - 1].y < 14) labs[i].y = labs[i - 1].y + 14;
+    labs.forEach(lb => svg.append('text').attr('x', m.l + 4).attr('y', lb.y).attr('font-size', 'var(--cds-font-size-caption)').attr('fill', lb.col).attr('paint-order', 'stroke').attr('stroke', 'var(--color-panel)').attr('stroke-width', 4).text(lb.t));
+    // oppsett som er utløst i perioden
+    L.recent.filter(t => t.i >= a0).forEach(t => { const cx = x(t.i) + x.bandwidth() / 2, yy = t.dir > 0 ? y(B.l[t.i]) + 12 : y(B.h[t.i]) - 4;
+      svg.append('text').attr('x', cx).attr('y', yy).attr('text-anchor', 'middle').attr('font-size', '11px').attr('fill', t.dir > 0 ? 'var(--color-ok)' : 'var(--color-bad)').text(t.dir > 0 ? '▲' : '▼'); });
+    const tip = tipOf(wrap);
+    svg.append('rect').attr('x', m.l).attr('y', 0).attr('width', W - m.l - m.r).attr('height', H).attr('fill', 'transparent').on('pointermove', ev => { const [px] = d3.pointer(ev); const k = Math.max(0, Math.min(idx.length - 1, Math.floor((px - m.l) / x.step()))), i = idx[k];
+      const tr = L.recent.filter(t => t.i === i); tip.replaceChildren(el('div', 'd', `${dfmt(B.t[i])} ${hm(B.t[i])}–${hm(B.t[i] + DT.M15)}`), el('div', null, `Å ${price(B.o[i])} · H ${price(B.h[i])} · L ${price(B.l[i])} · S ${price(B.c[i])}`), el('div', 'ai-muted', `VWAP ${price(I.vwap[i])} · RSI ${nf(I.R[i], { maximumFractionDigits: 0 })}`),
+        ...tr.map(t => el('div', t.dir > 0 ? 'ai-pos' : 'ai-neg', `${t.dir > 0 ? 'Long' : 'Short'}: ${DT.TYPES[t.type].label}${t.state === 'lukket' ? ` → ${t.how} (${fR(t.R)})` : ''}`)));
+      const kx = wrap.clientWidth / W; place(wrap, tip, (x(i) + x.bandwidth() / 2) * kx, 60); }).on('pointerleave', () => { tip.hidden = true; });
+    const lg = el('div', 'ai-legend'); const it = (sty, txt) => { const sp = el('span'); const i = el('i'); Object.assign(i.style, sty); sp.append(i, document.createTextNode(txt)); return sp; };
+    lg.append(it({ color: dash.colors[0] }, '20-snitt'), it({ color: dash.colors[1] }, '50-snitt'), it({ color: dash.colors[2], borderTopStyle: 'dashed' }, 'VWAP (fra 00:00 UTC)'), it({ color: 'var(--cds-chart-muted)', borderTopStyle: 'dashed' }, 'Gårsdagens topp/bunn'));
+    const mk = el('span'); mk.append(el('b', 'ai-pos', '▲'), el('b', 'ai-neg', '▼'), document.createTextNode(' Utløste oppsett')); lg.append(mk);
+    box.append(lg, el('p', 'ai-muted', 'Tider i norsk tid. Stiplede vertikale linjer markerer ny døgn (00:00 UTC), da gårsdagens topp/bunn og VWAP nullstilles.'));
+  }
+  function renderCalc(s, P, sel) {
+    const box = document.getElementById('dt-calc');
+    let saved = {}; try { saved = JSON.parse(localStorage.getItem('dt-calc') || '{}'); } catch (e) { /* ingen lagring */ }
+    const src = DTS.calc || (sel ? { entry: sel.entry != null ? sel.entry : sel.ref, stop: sel.stop, dir: sel.dir } : { entry: P, stop: null, dir: 1 });
+    const v = { acct: saved.acct || 1000, risk: saved.risk || 1, entry: src.entry, stop: src.stop };
+    const inp = (lab, key, step, help) => { const w = el('label', 'dt-in'); w.append(el('span', 'ai-muted', lab)); const i = el('input'); i.type = 'number'; i.step = step; i.inputMode = 'decimal'; i.value = v[key] != null && isFinite(v[key]) ? +(+v[key]).toPrecision(['entry', 'stop'].includes(key) ? 6 : 8) : ''; i.dataset.k = key; w.append(i); if (help) w.append(el('span', 'ai-cap ai-muted', help)); return w; };
+    const form = el('div', 'dt-form'); form.append(inp('Kontostørrelse (USDT)', 'acct', 'any'), inp('Risiko per handel (%)', 'risk', '0.1', '1 % er vanlig maks'), inp('Inngang', 'entry', 'any'), inp('Stopp', 'stop', 'any'));
+    const out = el('dl', 'ai-kv');
+    const calc = () => { const g = k => parseFloat((form.querySelector(`[data-k="${k}"]`).value || '').replace(',', '.'));
+      const acct = g('acct'), rk = g('risk'), e = g('entry'), st = g('stop'); try { localStorage.setItem('dt-calc', JSON.stringify({ acct, risk: rk })); } catch (er) { /* ingen lagring */ }
+      out.replaceChildren(); const row = (a, b, cls) => out.append(el('dt', null, a), el('dd', cls, b));
+      if (!(acct > 0 && rk > 0 && e > 0 && st > 0) || e === st) { row('Fyll inn alle feltene', '–'); return; }
+      const dir = e > st ? 1 : -1, per = Math.abs(e - st), riskAmt = acct * rk / 100, qty = riskAmt / per, notional = qty * e, fee = notional * (DT.P.fee + DT.P.slip) * 2;
+      row('Retning', dir > 0 ? 'Long (stopp under inngang)' : 'Short (stopp over inngang)', dir > 0 ? 'ai-pos' : 'ai-neg');
+      row('Du risikerer', `${nf(riskAmt, { maximumFractionDigits: 2 })} USDT (${nf(per / e * 100, { maximumFractionDigits: 2 })} % kursbevegelse)`);
+      row('Posisjonsstørrelse', `${nf(qty, { maximumSignificantDigits: 5 })} ${s}`); row('Posisjonsverdi', `${nf(notional, { maximumFractionDigits: 2 })} USDT`);
+      const lev = notional / acct; row('Giring som trengs', lev <= 1 ? 'Ingen (under kontostørrelsen)' : `${nf(lev, { maximumFractionDigits: 1 })}×`, lev > 5 ? 'ai-neg' : lev > 1 ? 'ai-warn' : null);
+      row('Gebyr + glidning (inn og ut)', `ca. ${nf(fee, { maximumFractionDigits: 2 })} USDT (${nf(fee / riskAmt, { maximumFractionDigits: 2 })} R)`);
+      row(`Gevinst ved 1R (${price(e + dir * per)})`, `+${nf(riskAmt - fee, { maximumFractionDigits: 2 })} USDT etter gebyr`, 'ai-pos');
+      row(`Gevinst ved 2R (${price(e + dir * 2 * per)})`, `+${nf(2 * riskAmt - fee, { maximumFractionDigits: 2 })} USDT etter gebyr`, 'ai-pos');
+      row(`Tap ved stopp (${price(st)})`, `−${nf(riskAmt + fee, { maximumFractionDigits: 2 })} USDT inkl. gebyr`, 'ai-neg');
+      if (per / e * 100 < 0.4) row('Merk', 'Kort stopp: gebyrene spiser en stor del av gevinsten.', 'ai-warn'); };
+    form.querySelectorAll('input').forEach(i => i.addEventListener('input', () => { if (['entry', 'stop'].includes(i.dataset.k)) DTS.calc = { entry: parseFloat(form.querySelector('[data-k="entry"]').value), stop: parseFloat(form.querySelector('[data-k="stop"]').value) }; calc(); }));
+    const reset = el('button', 'ai-btn', 'Hent fra valgt oppsett'); reset.type = 'button'; reset.addEventListener('click', () => { DTS.calc = null; renderDay(); });
+    box.replaceChildren(el('h2', null, 'Posisjonskalkulator'), el('p', 'ai-muted', 'Regner ut hvor stor posisjonen kan være for at et tap ved stopp skal bli det beløpet du har bestemt deg for å risikere. Gebyr: Binance futures taker 0,05 % + 0,02 % glidning per side. Kontostørrelse og risiko huskes i denne nettleseren.'), form, reset, out);
+    calc();
+  }
+  function renderDayWatch(s) {
+    const box = document.getElementById('dt-watch'); const tw = el('div', 'ai-tablewrap'), tb = el('table', 'ai-table'), hr = el('tr');
+    ['Coin', 'Kurs', '1t-trend', 'Status', 'Oppsett'].forEach((h, i) => hr.append(el('th', i === 0 || i >= 3 ? 'l' : null, h))); const th = el('thead'); th.append(hr); tb.append(th); const bd = el('tbody');
+    state.list.forEach(sym => { const L = DTS.live[sym]; if (!L) return; const tr = el('tr'); tr.style.cursor = 'pointer'; if (sym === s) tr.className = 'hl'; tr.addEventListener('click', () => dash.setParams({ coin: sym }));
+      const best = L.items.slice().sort((a, b) => ({ 'utløst': 0, 'åpen': 1, 'følg': 2 }[a.status] - { 'utløst': 0, 'åpen': 1, 'følg': 2 }[b.status]))[0];
+      tr.append(el('td', 'l', `${NAMES[sym]} (${sym})`), el('td', null, price(curPrice(sym))), el('td', L.bias > 0 ? 'ai-pos' : L.bias < 0 ? 'ai-neg' : 'ai-neu', L.bias > 0 ? 'Opp' : L.bias < 0 ? 'Ned' : 'Sidelengs'),
+        el('td', 'l ' + (best ? DT_ST[best.status][1] : 'ai-muted'), best ? DT_ST[best.status][0] : 'Ingenting nær'), el('td', 'l', best ? `${best.dir > 0 ? 'Long' : 'Short'} – ${DT.TYPES[best.type].short}${L.items.length > 1 ? ` (+${L.items.length - 1})` : ''}` : '–')); bd.append(tr); });
+    tb.append(bd); tw.append(tb); box.replaceChildren(el('h2', null, 'Alle coins nå'), el('p', 'ai-muted', 'Trykk på en rad for å bytte coin.'), tw);
+  }
+  function renderDayRecent(s, L) {
+    const box = document.getElementById('dt-recent'); const rec = L.recent.slice().reverse();
+    const tw = el('div', 'ai-tablewrap'), tb = el('table', 'ai-table'), hr = el('tr'); ['Tid', 'Oppsett', 'Inngang', 'Stopp', 'Utfall'].forEach((h, i) => hr.append(el('th', i < 2 ? 'l' : null, h))); const th = el('thead'); th.append(hr); tb.append(th); const bd = el('tbody');
+    const HOW = { 'mål': 'Mål 2R nådd', stopp: 'Stoppet ut', tid: 'Tidsstopp' };
+    rec.forEach(t => { const tr = el('tr'); const res = t.state === 'lukket' ? `${HOW[t.how]} (${fR(t.R)})` : t.state === 'åpen' ? `Åpen (${fR(t.curR)})` : t.state === 'venter' ? 'Utløst nå' : 'Ugyldig (åpnet forbi stopp)';
+      tr.append(el('td', 'l', `${dshort(t.t)} ${hm(t.t + DT.M15)}`), el('td', 'l ' + (t.dir > 0 ? 'ai-pos' : 'ai-neg'), `${t.dir > 0 ? 'Long' : 'Short'} – ${DT.TYPES[t.type].short}`), el('td', null, price(t.entry != null ? t.entry : t.ref)), el('td', null, price(t.stop)), el('td', t.state === 'lukket' ? sgnCls(t.R) : 'ai-neu', res)); bd.append(tr); });
+    tb.append(bd); tw.append(tb);
+    const closed = rec.filter(t => t.state === 'lukket'), sum = closed.reduce((a, t) => a + t.R, 0);
+    box.replaceChildren(el('h2', null, 'Oppsett siste 48 timer'), el('p', 'ai-muted', closed.length ? `${closed.length} avsluttede handler, sum ${fR(sum)} etter gebyr. Tidspunkt = når 15-min candlen lukket.` : 'Tidspunkt = når 15-min candlen lukket.'), rec.length ? tw : el('p', 'ai-muted', 'Ingen oppsett siste 48 timer.'));
+  }
+  function renderDayBT(s) {
+    const box = document.getElementById('dt-bt'); const D = dash.data('daytrade');
+    if (D.status !== 'ok' || !D.data || !D.data.ALL) { box.replaceChildren(el('h2', null, 'Har oppsettene tjent penger?'), el('p', 'ai-muted', D.status === 'loading' ? 'Laster backtest …' : 'Backtesten er ikke regnet ennå. Den lages automatisk ved neste oppdatering.')); return; }
+    const bt = D.data, scope = state.dtScope === 'ALL' || !bt.coins[s] ? 'ALL' : s, S = scope === 'ALL' ? bt.ALL : bt.coins[s];
+    const head = el('div', 'ai-row'); head.append(el('h2', null, 'Har oppsettene tjent penger?'));
+    const seg = el('div', 'ai-seg'); [[s, NAMES[s]], ['ALL', 'Alle coins']].forEach(([k, lab]) => { const b = el('button', null, lab); b.type = 'button'; b.setAttribute('aria-pressed', k === scope ? 'true' : 'false'); b.addEventListener('click', () => { state.dtScope = k; renderDayBT(s); }); seg.append(b); }); head.append(seg);
+    const tw = el('div', 'ai-tablewrap'), tb = el('table', 'ai-table'), hr = el('tr');
+    ['Oppsett', 'Handler', 'Treff', 'Snitt per handel', 'Første 8 mnd', 'Siste 4 mnd', 'Sum', 'Verste nedtur', 'Vurdering'].forEach((h, i) => hr.append(el('th', i === 0 || i === 8 ? 'l' : (i === 6 || i === 7 ? 'ai-hide-sm' : null), h))); const th = el('thead'); th.append(hr); tb.append(th); const bd = el('tbody');
+    DT.KEYS.forEach(k => { const z = S[k]; if (!z) return; const a = z.all, [vt, vc] = DT_VERD[z.verdict]; const tr = el('tr');
+      tr.append(el('td', 'l ' + (k.endsWith('L') ? 'ai-pos' : 'ai-neg'), `${k.endsWith('L') ? 'Long' : 'Short'} – ${DT.TYPES[k.slice(0, 2)].short}`), el('td', null, String(a.n || 0)), el('td', null, a.n ? share(a.win) : '–'),
+        el('td', sgnCls(a.exp), a.n ? fR(a.exp) : '–'), el('td', sgnCls(z.is.exp), z.is.n ? fR(z.is.exp) : '–'), el('td', sgnCls(z.oos.exp), z.oos.n ? fR(z.oos.exp) : '–'), el('td', 'ai-hide-sm ' + sgnCls(a.sum), a.n ? fR(a.sum, 1) : '–'), el('td', 'ai-hide-sm ai-neg', a.n ? fR(-a.dd, 1) : '–'), el('td', 'l ' + vc, vt)); bd.append(tr); });
+    tb.append(bd); tw.append(tb);
+    const good = DT.KEYS.filter(k => S[k] && S[k].verdict === 'good').map(k => `${k.endsWith('L') ? 'long' : 'short'} ${DT.TYPES[k.slice(0, 2)].short.toLowerCase()}`);
+    const lead = el('p', 'ai-summary', good.length ? `Lønnsomme i backtesten for ${scope === 'ALL' ? 'alle coins samlet' : NAMES[s]}: ${good.join(', ')}. Bare disse sender push-varsel.` : `Ingen av oppsettene har vært tydelig lønnsomme etter gebyr for ${scope === 'ALL' ? 'alle coins samlet' : NAMES[s]} siste 12 måneder. Da sendes ingen daytrade-varsler.`);
+    const how = el('details', 'ai-more'); how.append(el('summary', null, 'Slik er backtesten laget'));
+    const ul = el('ul', 'ai-list');
+    [`Periode: ${dfmt(bt.from)}–${dfmt(bt.to)}, 15-min candles fra Binance. Regnet ${new Date(bt.built).toLocaleString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.`,
+     'Nøyaktig samme kode som live-visningen. Oppsettet avgjøres på lukket 15-min candle; inngang på åpningen av neste candle.',
+     'Stopp som vist i oppsettet, mål 2R, ellers ut etter 6 timer (24 candles). Treffer stopp og mål samme candle, teller stopp. Åpner kursen forbi stoppen, fylles den på åpningen.',
+     `Gebyr: ${nf((DT.P.fee) * 100, { maximumFractionDigits: 2 })} % + ${nf(DT.P.slip * 100, { maximumFractionDigits: 2 })} % glidning per side (Binance futures taker). Oppsett med stopp under ${nf(DT.P.minStopPct, { maximumFractionDigits: 2 })} % tas ikke, fordi gebyrene da spiser for mye.`,
+     'R = risikoen i handelen. +0,10 R per handel betyr at du i snitt tjente 10 % av det du risikerte, etter gebyr.',
+     'Én handel av hver type og retning om gangen per coin. Parametrene er bestemt på forhånd og ikke justert etter resultatene.',
+     '«Lønnsom» krever positivt resultat både de første 8 og de siste 4 månedene, minst 20 + 10 handler, og at gevinsten ikke er forklart av tilfeldigheter alene. Ingen garanti for at det fortsetter.',
+     'Ikke med: finansieringsrente på futures, og at markedet kan bevege seg mens du legger inn ordren.'].forEach(t => ul.append(el('li', null, t)));
+    how.append(ul);
+    box.replaceChildren(head, lead, tw, how);
+    // kumulativt resultat (alle coins samlet)
+    if (bt.curve) { const cw = el('div'); cw.style.position = 'relative'; box.append(el('h3', null, 'Samlet resultat over tid (alle coins, i R)'), cw);
+      const W = Math.max(300, box.clientWidth || 600), H = 220; const keys = DT.KEYS.filter(k => bt.curve[k] && bt.curve[k].length); const len = d3.max(keys, k => bt.curve[k].length);
+      const all = keys.flatMap(k => bt.curve[k]); const y = d3.scaleLinear([Math.min(0, d3.min(all)), Math.max(0, d3.max(all))], [H - 22, 8]).nice();
+      const svg = d3.select(cw).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img').attr('aria-label', 'Kumulativt resultat i R per oppsett');
+      const m = { l: 44, r: 8 }; const x = d3.scaleLinear([0, len - 1], [m.l, W - m.r]);
+      y.ticks(5).forEach(v => { svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(v)).attr('y2', y(v)).attr('stroke', v === 0 ? 'var(--cds-chart-axis)' : 'var(--cds-chart-grid)'); svg.append('text').attr('x', m.l - 6).attr('y', y(v)).attr('dy', '0.32em').attr('text-anchor', 'end').attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg-muted)').text((v < 0 ? '−' : '') + nf(Math.abs(v), { maximumFractionDigits: 0 }) + ' R'); });
+      [0, Math.floor(len / 2), len - 1].forEach(i => svg.append('text').attr('x', x(i)).attr('y', H - 4).attr('text-anchor', i === 0 ? 'start' : i === len - 1 ? 'end' : 'middle').attr('font-size', 'var(--cds-font-size-caption)').attr('fill', 'var(--color-fg-muted)').text(dshort(bt.from + i * DAY)));
+      const cols = { pbL: dash.colors[0], pbS: dash.colors[0], swL: dash.colors[1], swS: dash.colors[1], boL: dash.colors[2], boS: dash.colors[2] };
+      keys.forEach(k => svg.append('path').datum(bt.curve[k]).attr('d', d3.line().x((v, i) => x(i)).y(v => y(v))).attr('fill', 'none').attr('stroke', cols[k]).attr('stroke-width', 1.6).attr('stroke-dasharray', k.endsWith('S') ? '5 3' : null));
+      const lg = el('div', 'ai-legend'); keys.forEach(k => { const sp = el('span'); const i = el('i'); i.style.color = cols[k]; if (k.endsWith('S')) i.style.borderTopStyle = 'dashed'; sp.append(i, document.createTextNode(`${k.endsWith('L') ? 'Long' : 'Short'} ${DT.TYPES[k.slice(0, 2)].short.toLowerCase()}`)); lg.append(sp); }); box.append(lg); }
+  }
+
+  // ------------------------------------------------------------------ backtest av status og varsler
+  const BT_ROWS = ['clearBuy', 'buyStart', 'waitStart', 'noneStart', 'sellStart', 'clearSell'];
+  const BT_SHORT = { clearBuy: 'Kjøpsvarsel', buyStart: 'Blir «Mulig kjøpsoppsett»', waitStart: 'Blir «Avvent bekreftelse»', noneStart: 'Blir «Ingen tydelig mulighet»', sellStart: 'Blir «Mulig salgs-/exit-oppsett»', clearSell: 'Salgsvarsel' };
+  const BT_VERDICT = { better: ['Bedre enn en vanlig dag', 'ai-pos'], worse: ['Dårligere enn en vanlig dag', 'ai-neg'], same: ['Ingen tydelig fordel', 'ai-neu'], few: ['For få til å si noe', 'ai-neu'], none: ['–', 'ai-muted'] };
+  function renderBacktest(c) {
+    const box = document.getElementById('sg-backtest'); if (!box) return;
+    const B = dash.data('backtest');
+    if (B.status === 'loading') { box.replaceChildren(el('h2', null, 'Har statusene og varslene fungert?'), el('p', 'ai-muted', 'Laster backtest …')); return; }
+    if (B.status !== 'ok' || !B.data || !B.data.summary) { box.replaceChildren(el('h2', null, 'Har statusene og varslene fungert?'), el('p', 'ai-muted', 'Backtesten er ikke regnet ennå. Den lages automatisk ved neste oppdatering.')); return; }
+    const bt = B.data, scope = state.btScope === 'coin' && bt.summary[c.sym] ? c.sym : 'ALL', S = bt.summary[scope];
+    const head = el('div', 'ai-row'); head.append(el('h2', null, 'Har statusene og varslene fungert?'));
+    const seg = el('div', 'ai-seg'); seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', 'Utvalg');
+    [['ALL', 'Alle coins'], ['coin', NAMES[c.sym]]].forEach(([k, lab]) => { const b = el('button', null, lab); b.type = 'button'; b.setAttribute('aria-pressed', (k === 'ALL') === (scope === 'ALL') ? 'true' : 'false'); b.addEventListener('click', () => { state.btScope = k; renderBacktest(c); }); seg.append(b); });
+    head.append(seg);
+    const who = scope === 'ALL' ? `alle coins (${ORDER.filter(s => bt.coins.includes(s)).join(', ')})` : NAMES[c.sym];
+    const vb = S.clearBuy, vs = S.clearSell;
+    const sent = (g, word) => g && g.h[30].n ? `${word} gikk riktig vei etter 30 dager i ${share(g.h[30].hit)} av ${g.h[30].n} tilfeller, mot ${share(g.h[30].base)} for en vanlig dag – ${BT_VERDICT[g.verdict][0].toLowerCase()}.` : `Ingen ${word.toLowerCase()} med kjent 30-dagersutfall.`;
+    const lead = el('p', 'ai-summary', `Backtest for ${who}, ${dfmt(bt.from)}–${dfmt(bt.to)}. ${sent(vb, 'Kjøpsvarslene')} ${sent(vs, 'Salgsvarslene')}`);
+    const warn = !bt.complete ? el('div', 'ai-warnbox', `Backtesten er ikke ferdig regnet (kommet til ${dfmt(bt.to)}). Resten regnes ved de neste oppdateringene.`) : null;
+    const tw = el('div', 'ai-tablewrap'); const tb = el('table', 'ai-table'); const hr = el('tr');
+    ['Når', 'Antall (uavh.)', 'Riktig retning 30 d (90 %-int.)', 'Vanlig dag', 'Median 7 d', 'Median 30 d', 'Median 90 d', 'Mål før stopp', 'Vurdering'].forEach((h, i) => hr.append(el('th', i === 0 || i === 8 ? 'l' : (i === 4 || i === 6 ? 'ai-hide-sm' : null), h)));
+    const th = el('thead'); th.append(hr); tb.append(th); const bd = el('tbody');
+    BT_ROWS.forEach(k => { const g = S[k]; if (!g) return; const z = g.h[30], tr = el('tr'); if (k.startsWith('clear')) tr.style.fontWeight = '600';
+      const dirTxt = g.dir > 0 ? 'høyere' : g.dir < 0 ? 'lavere' : 'høyere';
+      const rc = g.race ? `${share(g.race.tgt)} / ${share(g.race.stop)}` : '–'; const [vt, vc] = BT_VERDICT[g.verdict];
+      tr.append(el('td', 'l ' + (g.dir > 0 ? 'ai-pos' : g.dir < 0 ? 'ai-neg' : ''), BT_SHORT[k]), el('td', null, z.n ? `${z.n} (≈${z.nEff})` : '0'),
+        el('td', null, z.n ? `${shareCi(z.hit, z.ci)} ${dirTxt}` : '–'), el('td', null, share(z.base)),
+        el('td', 'ai-hide-sm ' + sgnCls(g.h[7].med * (g.dir || 1)), pct(g.h[7].med)), el('td', sgnCls(z.med * (g.dir || 1)), pct(z.med)), el('td', 'ai-hide-sm ' + sgnCls(g.h[90].med * (g.dir || 1)), pct(g.h[90].med)),
+        el('td', null, g.dir ? rc : '–'), el('td', 'l ' + vc, vt)); bd.append(tr); });
+    tb.append(bd); tw.append(tb);
+    const how = el('details', 'ai-more'); how.append(el('summary', null, 'Slik er backtesten laget'));
+    const ul = el('ul', 'ai-list');
+    ['For hver dag siden 1. januar 2019 er hele analysen kjørt på nytt med bare kursene som var kjent den dagen – nivåer, oppsettscore, scenario-motor og status regnes som om det var den dagen. Ingen framtidige data brukes (testet automatisk).',
+     '«Kjøpsvarsel» og «Salgsvarsel» er nøyaktig samme regel som sender de tydelige push-varslene: status blir kjøp/salg, eller WaveTrend-signal mens kursen står ved støtte/motstand.',
+     'Statusradene måler fra første dag en status dukker opp (ikke hver dag den varer). Utfall regnes fra dagslukk den dagen.',
+     '«Riktig retning» betyr høyere kurs for kjøp og lavere for salg. For «Avvent» og «Ingen» vises andelen høyere. «Vanlig dag» er samme andel for alle dager i perioden.',
+     '«Mål før stopp»: innen 30 dager, ble første mål (neste motstand) nådd før stoppnivået? Ved salg: nådde kursen må-holde-støtten før neste motstand? Skjer begge samme dag, teller stopp.',
+     'Signaler som kommer tett etter hverandre er ikke uavhengige. «Uavh.» er antall 30-dagersperioder med minst ett tilfelle, og intervallet er regnet ut fra dette.',
+     'Samme regler er brukt for hele perioden, men reglene er laget i 2026 med kjennskap til markedet – resultatene kan derfor være litt bedre enn de ville vært i sanntid.'].forEach(t => ul.append(el('li', null, t)));
+    how.append(ul);
+    // siste varsler
+    const rec = (bt.recent || []).filter(r => scope === 'ALL' || r.sym === c.sym).slice(0, 15);
+    const tw2 = el('div', 'ai-tablewrap'); const t2 = el('table', 'ai-table'); const h2 = el('tr');
+    ['Dato', 'Coin', 'Varsel', 'Kurs', '7 d', '30 d', '90 d', 'Mål / stopp'].forEach((h, i) => h2.append(el('th', i < 3 ? 'l' : (i === 6 ? 'ai-hide-sm' : null), h))); const th2 = el('thead'); th2.append(h2); t2.append(th2);
+    const b2 = el('tbody'); const RACE = { tgt: 'Mål nådd', stop: 'Stopp', none: 'Ingen av delene' };
+    rec.forEach(r => { const tr = el('tr'); const pend = v => v == null ? 'pågår' : pct(v);
+      tr.append(el('td', 'l', dfmt(r.t)), el('td', 'l', r.sym), el('td', 'l ' + (r.dir > 0 ? 'ai-pos' : 'ai-neg'), `${r.dir > 0 ? 'Kjøp' : 'Salg'}${r.kind === 'w' ? ' (WaveTrend)' : ''}`), el('td', null, price(r.price)),
+        el('td', sgnCls(r.r7 * r.dir), pend(r.r7)), el('td', sgnCls(r.r30 * r.dir), pend(r.r30)), el('td', 'ai-hide-sm ' + sgnCls(r.r90 * r.dir), pend(r.r90)), el('td', null, r.race ? RACE[r.race] : 'pågår')); b2.append(tr); });
+    t2.append(b2); tw2.append(t2);
+    box.replaceChildren(...[head, lead, warn, tw, el('p', 'ai-muted', 'Grønt = kursen gikk i signalets retning (opp for kjøp, ned for salg), rødt = motsatt. Historiske resultater er ingen garanti for framtiden. Ikke finansiell rådgivning.'), how,
+      el('h3', null, scope === 'ALL' ? 'Siste varsler i backtesten' : `Siste varsler for ${NAMES[c.sym]}`), rec.length ? tw2 : el('p', 'ai-muted', 'Ingen varsler i perioden.')].filter(Boolean));
   }
 
   // ------------------------------------------------------------------ avanserte data
@@ -678,7 +976,7 @@
     volatility: { t: 'Volatilitet (ATR)', what: 'Average True Range: gjennomsnittlig dagsbevegelse siste 14 dager. Brukes til å måle avstander til nivåer.', why: 'Avstand målt i ATR gjør at rolige og urolige perioder kan sammenlignes. Stopp bør ligge minst ca. 0,5 ATR fra nivået.', fake: 'Volatiliteten kan endre seg raskt ved nyheter.', spot: 'Høy volatilitet betyr større posisjonsrisiko – mange reduserer størrelsen.', ev: [], now: c => `ATR er ${nf(c.atrPct, { maximumFractionDigits: 1 })} % av prisen per dag.` },
     history: { t: 'Historiske utfall', what: 'Hvordan prisen utviklet seg etter tidligere situasjoner med lignende tekniske kjennetegn (se Historiske scenarioer).', why: 'Gir en pekepinn på spredningen i mulige utfall – ikke en prognose.', fake: 'Få uavhengige tilfeller gir stor usikkerhet, og markedet endrer seg over tid.', spot: 'Se på spredningen (beste/dårligste og største nedtur), ikke bare medianen.', ev: [], now: c => c.comps.find(x => x.key === 'hist').text },
     score: { t: 'Teknisk oppsettscore', what: 'En sammenvekting (0–100) av sju faktorer: trend, momentum, volum, prisstruktur, støtte/motstand, markedsregime og historiske utfall.', why: 'Gir et raskt bilde av om faktorene peker samme vei. Over 60 peker mange faktorer opp, under 40 peker mange ned.', fake: 'Scoren er ikke en sannsynlighet for gevinst, og vektene er skjønnsmessige.', spot: 'Les hvilke faktorer som trekker opp og ned – det er der forklaringen ligger.', ev: [], now: c => `Scoren er ${c.score}. ${c.comps.map(x => `${x.label}: ${(x.s > 0 ? '+' : x.s < 0 ? '−' : '') + Math.round(Math.abs(x.s * x.w) / 2)}`).join(', ')}.` },
-    analog: { t: 'Historisk scenario-motor', what: 'Finner dagene i historikken til BTC, XRP, POL og SAND der 14 tekniske kjennetegn lignet mest på i dag, og ser hva som skjedde etterpå.', why: 'Gir et ærlig bilde av hvor ulikt lignende situasjoner har endt – og om de skilte seg fra en vanlig dag.', fake: 'Likhet i indikatorer betyr ikke samme årsaker. Tilfeller som ligger nær hverandre i tid er ikke uavhengige, derfor vises antall uavhengige perioder og intervaller.', spot: 'Når andelen positive i lignende tilfeller ikke skiller seg fra basisraten, har situasjonen ingen historisk fordel.', ev: [], now: c => c.analog && c.analog.ok ? `${c.analog.n} tilfeller, ca. ${c.analog.nEff} uavhengige perioder, snittlikhet ${c.analog.meanSim} %.` : 'Ingen tilfeller.' },
+    analog: { t: 'Historisk scenario-motor', what: 'Finner dagene i historikken til alle coins i scanneren der 14 tekniske kjennetegn lignet mest på i dag, og ser hva som skjedde etterpå.', why: 'Gir et ærlig bilde av hvor ulikt lignende situasjoner har endt – og om de skilte seg fra en vanlig dag.', fake: 'Likhet i indikatorer betyr ikke samme årsaker. Tilfeller som ligger nær hverandre i tid er ikke uavhengige, derfor vises antall uavhengige perioder og intervaller.', spot: 'Når andelen positive i lignende tilfeller ikke skiller seg fra basisraten, har situasjonen ingen historisk fordel.', ev: [], now: c => c.analog && c.analog.ok ? `${c.analog.n} tilfeller, ca. ${c.analog.nEff} uavhengige perioder, snittlikhet ${c.analog.meanSim} %.` : 'Ingen tilfeller.' },
     status: { t: 'Status', what: 'En regelbasert vurdering med fire utfall: Mulig kjøpsoppsett, Avvent bekreftelse, Mulig salgs-/exit-oppsett og Ingen tydelig mulighet.', why: 'Samler score, plassering mot nivåer og momentum i én tydelig konklusjon.', fake: 'Statusen er ikke en ordre eller garanti. Den sier bare om kriteriene er oppfylt.', spot: 'Sjekk lista under for hvilke vilkår som er oppfylt og hvilke som mangler.', ev: [], now: c => `Status: ${c.status.label}. Oppsettscore ${c.score}.`, extra: c => { const ul = el('ul', 'ai-checks'); [...c.status.buyChecks.map(x => ({ ...x, t: 'Kjøp: ' + x.t })), ...c.status.sellChecks.map(x => ({ ...x, t: 'Salg/exit: ' + x.t }))].forEach(x => { const li = el('li'); li.append(el('span', x.ok ? 'y' : 'n', x.ok ? '✓' : '○'), el('span', null, x.t)); ul.append(li); }); return ul; } } };
   function openWhy(key, sym) {
     const c = state.coins[sym] || cur(); const L = LEARN[key]; if (!L || !c) return;
@@ -703,7 +1001,7 @@
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.why) closeWhy(); });
 
   // ------------------------------------------------------------------ tegning
-  const RENDER = { oversikt: renderOverview, teknisk: renderTech, historikk: renderHist, signaler: renderSignals, avansert: renderAdvanced };
+  const RENDER = { oversikt: renderOverview, daytrading: renderDay, teknisk: renderTech, historikk: renderHist, signaler: renderSignals, avansert: renderAdvanced };
   const MAIN = ['ov-cards', 'ta-now', 'ta-chart', 'hs-summary', 'sg-stats', 'av-body'];
   MAIN.forEach(id => document.getElementById(id).classList.add('dash-skeleton'));
   dash.onData(() => {
@@ -715,7 +1013,7 @@
     const parts = []; const names = code => state.list.filter(s => state.coins[s].status.code === code).map(s => NAMES[s]).join(', ');
     if (counts.buy) parts.push(`Mulig kjøpsoppsett: ${names('buy')}.`); if (counts.sell) parts.push(`Mulig salgs-/exit-oppsett: ${names('sell')}.`);
     if (counts.wait) parts.push(`Avventer bekreftelse: ${names('wait')}.`); if (counts.none) parts.push(`Ingen tydelig mulighet: ${names('none')}.`);
-    if (!counts.buy && !counts.sell) parts.unshift('Ingen av de fire har et tydelig kjøps- eller salgsoppsett akkurat nå.');
+    if (!counts.buy && !counts.sell) parts.unshift('Ingen av coinene har et tydelig kjøps- eller salgsoppsett akkurat nå.');
     tk.textContent = parts.join(' ');
     const asOf = Math.max(...state.list.map(s => state.coins[s].asOf));
     document.getElementById('ai-asof').textContent = `Analysert ${dfmt(asOf)} (siste dagslukk)`;
