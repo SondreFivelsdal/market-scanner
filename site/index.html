@@ -158,6 +158,30 @@ details.ai-more[open] > summary { margin-bottom: var(--cds-gap-sm); }
 .ai-why:hover { color: var(--color-fg); border-color: var(--cds-chart-axis); }
 .ai-fail { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); min-height: inherit; }
 .ai-fail::before { content: ""; width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-bad); }
+.as-light { display: flex; gap: 14px; align-items: flex-start; padding: var(--cds-pad-md) var(--cds-pad-lg); border-radius: var(--cds-radius); border: 2px solid currentColor; }
+.as-light p { color: var(--color-fg); font-size: var(--cds-font-size-body); }
+.as-dot { flex: none; width: 22px; height: 22px; border-radius: 50%; background: currentColor; margin-top: 4px; box-shadow: 0 0 0 5px color-mix(in srgb, currentColor 20%, transparent); }
+.as-title { font-family: var(--font-anthropic-serif); font-size: clamp(1.5rem, 5vw, 2rem); line-height: 1.15; margin-bottom: 4px; }
+.as-ok { color: var(--color-ok); } .as-bad { color: var(--color-bad); } .as-warn { color: var(--color-warn); } .as-muted { color: var(--color-fg-muted); }
+.as-plan { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: var(--cds-gap-sm); }
+.as-box { display: grid; gap: 2px; padding: var(--cds-pad-md); border-radius: var(--cds-radius); background: var(--color-bg); border: 1px solid var(--color-border-line); border-left-width: 4px; }
+.as-box.as-entry { border-left-color: var(--color-fg); } .as-box.as-tgt { border-left-color: var(--color-ok); } .as-box.as-stop { border-left-color: var(--color-bad); }
+.as-lab { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); text-transform: uppercase; letter-spacing: .04em; }
+.as-val { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+.as-chart { position: relative; }
+.as-list { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; line-height: 1.5; }
+.as-ctx { font-size: var(--cds-font-size-caption); }
+.as-dots { display: flex; gap: 6px; flex-wrap: wrap; }
+.as-dots span { width: 22px; height: 22px; border-radius: 50%; background: var(--color-border-line); }
+.as-dots .g { background: var(--color-ok); } .as-dots .r { background: var(--color-bad); }
+.as-steps { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; line-height: 1.5; }
+.as-gloss { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; font-size: var(--cds-font-size-caption); }
+.as-gloss dt { font-weight: var(--cds-font-weight-medium); } .as-gloss dd { margin: 0; color: var(--color-fg-muted); }
+.as-coins { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: var(--cds-gap-sm); }
+.as-coin { font: inherit; color: inherit; text-align: left; cursor: pointer; display: grid; gap: 4px; padding: var(--cds-pad-sm) var(--cds-pad-md); border-radius: var(--cds-radius); background: var(--color-bg); border: 1px solid var(--color-border-line); }
+.as-coin.on { border-color: var(--color-fg); box-shadow: inset 0 0 0 1px var(--color-fg); }
+.as-coin:focus-visible { outline: 2px solid var(--cds-chart-axis); outline-offset: 2px; }
+.as-ctag { font-size: var(--cds-font-size-caption); font-weight: var(--cds-font-weight-medium); }
 .dt-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: var(--cds-gap-sm); }
 .dt-in { display: grid; gap: 4px; font-size: var(--cds-font-size-caption); }
 .dt-in input { font: inherit; font-size: var(--cds-font-size-body, 15px); color: var(--color-fg); background: var(--color-bg); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: 8px 10px; min-width: 0; font-variant-numeric: tabular-nums; }
@@ -175,6 +199,7 @@ details.ai-more[open] > summary { margin-bottom: var(--cds-gap-sm); }
 
   <nav class="ai-tabs" role="tablist" aria-label="Sider" id="faner">
     <button role="tab" data-tab="oversikt" id="tab-oversikt">Oversikt</button>
+    <button role="tab" data-tab="assistent" id="tab-assistent">Trade-assistent</button>
     <button role="tab" data-tab="daytrading" id="tab-daytrading">Daytrading</button>
     <button role="tab" data-tab="teknisk" id="tab-teknisk">Teknisk analyse</button>
     <button role="tab" data-tab="historikk" id="tab-historikk">Historiske scenarioer</button>
@@ -262,6 +287,15 @@ details.ai-more[open] > summary { margin-bottom: var(--cds-gap-sm); }
         <div class="ai-cases" id="hs-cases"></div>
         <div class="ai-card" id="hs-compare" hidden></div>
       </div>
+    </div>
+  </section>
+
+  <section class="ai-page" id="assistent" role="tabpanel" aria-labelledby="tab-assistent" hidden>
+    <div class="ai-stack">
+      <div class="ai-card" id="as-main"></div>
+      <div class="ai-grid2"><div class="ai-card" id="as-why"></div><div class="ai-card" id="as-outcome"></div></div>
+      <div class="ai-card" id="as-coins"></div>
+      <div class="ai-card" id="as-how"></div>
     </div>
   </section>
 

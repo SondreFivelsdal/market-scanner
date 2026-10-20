@@ -7,7 +7,7 @@
   const HZL = { 7: '1 uke', 30: '30 dager', 90: '3 måneder', 180: '6 måneder', 365: '12 måneder' };
   const HZS = { 7: '1 u', 30: '30 d', 90: '3 mnd', 180: '6 mnd', 365: '12 mnd' };
   const symList = () => { const a = ORDER.filter(s => state.coins[s]); return a.length > 1 ? a.slice(0, -1).join(', ') + ' og ' + a[a.length - 1] : a.join(''); };
-  const TABS = ['oversikt', 'daytrading', 'teknisk', 'historikk', 'signaler', 'avansert'];
+  const TABS = ['oversikt', 'assistent', 'daytrading', 'teknisk', 'historikk', 'signaler', 'avansert'];
   const STATUS_CLS = { buy: 'st-buy', wait: 'st-wait', sell: 'st-sell', none: 'st-none' };
   const DAY = 864e5;
   const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
@@ -686,10 +686,11 @@
         DTS.raw[s] = { B, forming: forming ? +forming[4] : null }; DTS.live[s] = DT.live(B, H); }));
       DTS.t = Date.now(); DTS.err = null;
     } catch (e) { console.error(e); DTS.err = 'Fikk ikke hentet 15-min data fra Binance. Prøver igjen om ett minutt.'; }
-    DTS.busy = false; if (tabNow() === 'daytrading') renderDay();
+    DTS.busy = false; if (tabNow() === 'daytrading') renderDay(); else if (tabNow() === 'assistent') renderAssist();
   }
-  function dtTimer() { if (tabNow() === 'daytrading' && !document.hidden) { if (!DTS.timer) { DTS.timer = setInterval(() => { if (tabNow() === 'daytrading' && !document.hidden) dtFetch(); else { clearInterval(DTS.timer); DTS.timer = null; } }, 60e3); } } }
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && tabNow() === 'daytrading') { dtFetch(); dtTimer(); } });
+  const dtTab = () => ['daytrading', 'assistent'].includes(tabNow());
+  function dtTimer() { if (dtTab() && !document.hidden) { if (!DTS.timer) { DTS.timer = setInterval(() => { if (dtTab() && !document.hidden) dtFetch(); else { clearInterval(DTS.timer); DTS.timer = null; } }, 60e3); } } }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && dtTab()) { dtFetch(); dtTimer(); } });
   const dtBT = (sym, key) => { const D = dash.data('daytrade'); if (D.status !== 'ok' || !D.data) return null; const bt = D.data;
     const c = bt.coins && bt.coins[sym] && bt.coins[sym][key]; if (c && c.verdict !== 'few') return { ...c, scope: NAMES[sym] }; const a = bt.ALL && bt.ALL[key]; return a ? { ...a, scope: 'alle coins' } : null; };
   const curPrice = s => { const L = window.__live && window.__live[s]; if (L && L.p) return L.p; const r = DTS.raw[s]; return r && r.forming != null ? r.forming : DTS.live[s] && DTS.live[s].price; };
@@ -1000,8 +1001,143 @@
   document.getElementById('hvorfor').addEventListener('click', e => { if (e.target.id === 'hvorfor') closeWhy(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.why) closeWhy(); });
 
+  // ------------------------------------------------------------------ trade-assistent (enkel forklaring for nybegynnere, bygger på daytrading-motoren)
+  const VRANK = { good: 0, mixed: 1, few: 2, bad: 3 }, SRANK = { 'utløst': 0, 'åpen': 1, 'følg': 2 };
+  const AS_WHY = {
+    pbL: ['Kursen har vært på vei opp de siste timene.', 'Nå tok den en liten pause og falt litt tilbake – som et pusterom i en oppoverbakke.', 'Siste 15 minutter begynte den å stige igjen. Å hoppe på etter en slik pause er en vanlig måte å følge en oppgang på.'],
+    pbS: ['Kursen har vært på vei ned de siste timene.', 'Nå steg den litt tilbake – som et pusterom i en nedoverbakke.', 'Siste 15 minutter begynte den å falle igjen. Å gå short etter en slik rekyl er en vanlig måte å følge et fall på.'],
+    swL: ['Kursen falt så vidt under gårsdagens laveste pris …', '… men ble kjøpt opp igjen nesten med en gang.', 'Det tyder ofte på at selgerne gikk tom, og at kursen kan sprette opp.'],
+    swS: ['Kursen steg så vidt over gårsdagens høyeste pris …', '… men ble solgt ned igjen nesten med en gang.', 'Det tyder ofte på at kjøperne gikk tom, og at kursen kan falle tilbake.'],
+    boL: ['Kursen brøt over gårsdagens høyeste pris.', 'Det skjedde med mye mer handel enn vanlig – mange kjøpte samtidig.', 'Når mange kjøper på en gang, fortsetter oppgangen ofte en stund.'],
+    boS: ['Kursen brøt under gårsdagens laveste pris.', 'Det skjedde med mye mer handel enn vanlig – mange solgte samtidig.', 'Når mange selger på en gang, fortsetter fallet ofte en stund.'] };
+  function asPick(L, s) {
+    const items = (L.items || []).map(x => ({ ...x, b: dtBT(s, x.key) })).map(x => ({ ...x, v: x.b ? x.b.verdict : 'few' }));
+    items.sort((a, b) => SRANK[a.status] - SRANK[b.status] || VRANK[a.v] - VRANK[b.v]);
+    const x = items[0] || null; let mode = 'none';
+    if (x) { if (x.status === 'utløst') mode = x.v === 'good' ? 'go' : x.v === 'bad' ? 'skip' : 'maybe'; else if (x.status === 'åpen') mode = 'open'; else mode = 'wait'; }
+    return { x, mode, items };
+  }
+  const AS_MODE = {
+    go: (d) => [d > 0 ? 'LONG nå' : 'SHORT nå', d > 0 ? 'ok' : 'bad', d > 0 ? 'Assistenten ser et kjøpssignal som har fungert historisk.' : 'Assistenten ser et salgssignal som har fungert historisk.'],
+    maybe: (d) => [`Mulig ${d > 0 ? 'LONG' : 'SHORT'} – usikkert`, 'warn', 'Signalet er utløst, men historikken er blandet. Prøv det helst som papirhandel (uten ekte penger) først.'],
+    skip: (d) => ['Stå over', 'muted', `Det kom et ${d > 0 ? 'kjøpssignal' : 'salgssignal'}, men akkurat denne typen har tapt penger etter gebyr de siste 12 månedene.`],
+    open: (d) => ['Handel pågår', 'warn', `Et ${d > 0 ? 'kjøpssignal (long)' : 'salgssignal (short)'} ble utløst for litt siden og er fortsatt «i spill». Det er for sent å gå inn nå – vent på neste.`],
+    wait: (d) => [`Vent – mulig ${d > 0 ? 'LONG' : 'SHORT'} snart`, 'warn', 'Kursen nærmer seg et oppsett, men det er ikke utløst ennå. Ikke gå inn før signalet kommer.'],
+    none: () => ['Ingen handel nå', 'muted', 'Assistenten ser ingen gode muligheter akkurat nå. Å vente er også en beslutning – og ofte den beste.'] };
+  function renderAssist() {
+    const c = cur(); if (!c) return; const s = c.sym;
+    if (!DTS.t && !DTS.busy) dtFetch(); dtTimer();
+    const L = DTS.live[s], head = document.getElementById('as-main');
+    const ids = ['as-why', 'as-outcome', 'as-how', 'as-coins'];
+    if (!L) { head.replaceChildren(el('h2', null, `Trade-assistent – ${NAMES[s]}`), el('p', 'ai-muted', DTS.err || 'Henter ferske 15-minutters kurser fra Binance …')); ids.forEach(id => document.getElementById(id).replaceChildren()); return; }
+    const P = curPrice(s), { x, mode } = asPick(L, s), d = x ? x.dir : 0, [title, tone, sub] = AS_MODE[mode](d);
+    const e = x ? (x.entry != null ? x.entry : x.ref) : null, r = x ? x.risk : null, tgt = x ? e + x.dir * 2 * r : null;
+    // ---- hovedkort: trafikklys + plan
+    const light = el('div', 'as-light as-' + tone); light.append(el('span', 'as-dot'), el('div', 'as-ltxt'));
+    light.lastChild.append(el('div', 'as-title', title), el('p', null, sub));
+    const meta = el('p', 'ai-muted', `${NAMES[s]} ${price(P)} · sjekket ${DTS.t ? hm(DTS.t) : '–'} · ser på nytt hvert minutt, og et nytt signal kan komme hvert kvarter (neste ${hm(L.t + 2 * DT.M15)}).`);
+    const parts = [el('div', 'ai-row', null), meta, light];
+    parts[0].append(el('h2', null, `Trade-assistent – ${NAMES[s]}`), el('span', 'ai-pill ' + (L.bias > 0 ? 'st-buy' : L.bias < 0 ? 'st-sell' : 'st-none'), L.bias > 0 ? 'Siste timer: opp' : L.bias < 0 ? 'Siste timer: ned' : 'Siste timer: sidelengs'));
+    if (x && mode !== 'none') {
+      const plan = el('div', 'as-plan');
+      const box = (lab, val, sub2, cls) => { const b = el('div', 'as-box ' + cls); b.append(el('span', 'as-lab', lab), el('b', 'as-val', val), el('span', 'ai-muted ai-cap', sub2)); return b; };
+      const pc = v => pct((v / e - 1) * 100, 2);
+      plan.append(
+        box(mode === 'open' ? 'Gikk inn ved' : mode === 'wait' ? 'Mulig inngang ved' : mode === 'skip' ? 'Signalets inngang' : 'Gå inn ved', price(e), mode === 'skip' ? 'Vist for læring – assistenten anbefaler å stå over' : x.dir > 0 ? (mode === 'wait' ? 'Kjøp hvis signalet kommer' : 'Kjøp (long) til omtrent denne prisen') : (mode === 'wait' ? 'Selg short hvis signalet kommer' : 'Selg short til omtrent denne prisen'), 'as-entry'),
+        box('Ta gevinst ved', price(tgt), `${pc(tgt)} · målet er dobbelt så langt unna som stoppen`, 'as-tgt'),
+        box('Ta tapet ved', price(x.stop), `${pc(x.stop)} · her var signalet feil – kom deg ut`, 'as-stop'));
+      parts.push(plan);
+      if (mode === 'open') { const cr = (P - e) * x.dir / r; parts.push(el('p', 'ai-cap', `Status nå: ${cr >= 0 ? 'i pluss' : 'i minus'} (${fR(cr)}). Handelen avsluttes uansett etter 6 timer (om ca. ${Math.max(0, DT.P.maxBars - (L.n - x.i)) * 15} minutter).`)); }
+      const sv = el('div', 'as-chart'); parts.push(sv); requestAnimationFrame(() => asChart(sv, s, L, x, e, tgt));
+    } else { const sv = el('div', 'as-chart'); parts.push(sv); requestAnimationFrame(() => asChart(sv, s, L, null)); }
+    head.replaceChildren(...parts);
+    // ---- hvorfor
+    const why = document.getElementById('as-why'), ul = el('ul', 'as-list');
+    const li = (txt, cls) => ul.append(el('li', cls || null, txt));
+    if (x && AS_WHY[x.key] && mode !== 'wait') AS_WHY[x.key].forEach(t => li(t));
+    if (x && mode === 'wait') { const E = price(e), W = {
+        pbL: [`Kursen er i en oppgang og har tatt en liten pause.`, `Signalet kommer hvis en 15-minutters periode avsluttes over ${E} – da ser det ut som oppgangen fortsetter.`],
+        pbS: [`Kursen er i en nedgang og har steget litt tilbake.`, `Signalet kommer hvis en 15-minutters periode avsluttes under ${E} – da ser det ut som fallet fortsetter.`],
+        swL: [`Kursen er nær gårsdagens laveste pris (${E}).`, 'Signalet kommer hvis den faller kort under og raskt kommer tilbake over – da har selgerne ofte gått tom.'],
+        swS: [`Kursen er nær gårsdagens høyeste pris (${E}).`, 'Signalet kommer hvis den stiger kort over og raskt faller tilbake under – da har kjøperne ofte gått tom.'],
+        boL: [`Kursen er like under gårsdagens høyeste pris (${E}).`, 'Signalet kommer hvis en 15-minutters periode avsluttes over den, med mye mer handel enn vanlig.'],
+        boS: [`Kursen er like over gårsdagens laveste pris (${E}).`, 'Signalet kommer hvis en 15-minutters periode avsluttes under den, med mye mer handel enn vanlig.'] }[x.key] || [];
+      W.forEach(t => li(t)); }
+    const ctx = el('ul', 'as-list as-ctx');
+    const cli = (t, cls) => ctx.append(el('li', cls || null, t));
+    cli(L.bias > 0 ? 'De siste timene har kursen gått oppover.' : L.bias < 0 ? 'De siste timene har kursen gått nedover.' : 'De siste timene har kursen gått sidelengs, uten tydelig retning.');
+    cli(P >= L.vwap ? `Kursen er over dagens gjennomsnittspris (${price(L.vwap)}) – kjøperne har hatt litt overtaket i dag.` : `Kursen er under dagens gjennomsnittspris (${price(L.vwap)}) – selgerne har hatt litt overtaket i dag.`);
+    cli(L.rsi > 70 ? `Kursen har steget mye på kort tid (RSI ${nf(L.rsi, { maximumFractionDigits: 0 })}) – den kan trenge en pause.` : L.rsi < 30 ? `Kursen har falt mye på kort tid (RSI ${nf(L.rsi, { maximumFractionDigits: 0 })}) – den kan trenge en pause.` : `Kursen er verken «overopphetet» eller «utsolgt» (RSI ${nf(L.rsi, { maximumFractionDigits: 0 })}).`);
+    if (L.adr && L.today > L.adr) cli(`Kursen har allerede beveget seg mer enn vanlig i dag (${nf(L.today, { maximumFractionDigits: 1 })} % mot normalt ${nf(L.adr, { maximumFractionDigits: 1 })} %). Det kan være mindre rom igjen.`, 'ai-warn');
+    const day = c.long && c.long.label;
+    if (day) { const up = /bullish/i.test(day), dn = /bearish/i.test(day); cli(`Det store bildet (dagsgrafen) er ${day.toLowerCase()}.${x && ((x.dir > 0 && dn) || (x.dir < 0 && up)) ? ' Signalet går mot det store bildet, så vær ekstra forsiktig.' : ''}`, x && ((x.dir > 0 && dn) || (x.dir < 0 && up)) ? 'ai-warn' : null); }
+    why.replaceChildren(el('h2', null, x && mode !== 'none' ? 'Hvorfor?' : 'Hva skjer i markedet nå?'), ...(x && mode !== 'none' && ul.children.length ? [ul, el('h3', null, 'Situasjonen rundt')] : []), ctx,
+      el('p', 'ai-muted', `Økt: ${L.session}. Gårsdagens høyeste pris ${price(L.pdh)} og laveste ${price(L.pdl)} er viktige nivåer i dag.`));
+    // ---- forventet utfall
+    const out = document.getElementById('as-outcome'); const b = x && x.b;
+    if (!x || mode === 'none' || !b || !b.all || !b.all.n) {
+      out.replaceChildren(el('h2', null, 'Hva kan du forvente?'), el('p', 'ai-cap', 'Når et signal dukker opp, ser du her hvordan akkurat den typen signal har gått de siste 12 månedene: hvor ofte det traff, hvor ofte det bommet, og hva det ga i snitt.'));
+    } else {
+      const a = b.all, n10 = v => Math.round((v || 0) * 10), g = n10(a.tgt), st = n10(a.stop), tm = Math.max(0, 10 - g - st);
+      const dots = el('div', 'as-dots'); for (let i = 0; i < 10; i++) dots.append(el('span', i < g ? 'g' : i < g + st ? 'r' : 'n'));
+      const risk = 100, win = 2 * risk - a.cost * risk, loss = risk + a.cost * risk, avg = a.exp * risk;
+      const kr = v => (v > 0 ? '+' : v < 0 ? '−' : '') + nf(Math.abs(v), { maximumFractionDigits: 0 }) + ' kr';
+      const verdTxt = { good: ['Har tjent penger historisk', 'ai-pos'], mixed: ['Blandet historikk', 'ai-warn'], few: ['For få tilfeller til å vite', 'ai-neu'], bad: ['Har tapt penger historisk', 'ai-neg'] }[b.verdict];
+      const leg = el('p', 'ai-cap'); leg.append(el('b', 'ai-pos', `${g} nådde målet`), document.createTextNode(' · '), el('b', 'ai-neg', `${st} gikk til stopp`), document.createTextNode(` · ${tm} ble avsluttet etter 6 timer uten å nå noen av dem`));
+      const kv = el('dl', 'ai-kv'); const row = (k, v, cls) => kv.append(el('dt', null, k), el('dd', cls, v));
+      row('Når målet nås', kr(win), 'ai-pos'); row('Når stoppen tas', kr(-loss), 'ai-neg'); row('I snitt per handel', kr(avg), sgnCls(avg)); row('Typisk varighet', `ca. ${nf(a.bars * 15 / 60, { maximumFractionDigits: 1 })} timer`);
+      out.replaceChildren(el('div', 'ai-row'), el('p', 'ai-cap', `Av 10 slike signaler de siste 12 månedene (${a.n} totalt, ${b.scope}):`), dots, leg,
+        el('p', 'ai-cap', 'Hvis du hver gang risikerer 100 kr (altså taper 100 kr hvis stoppen tas):'), kv,
+        el('p', 'ai-summary', avg > 0 ? `Over mange handler har denne typen gitt ca. ${kr(avg)} per 100 kr risikert etter gebyr. Det betyr ikke at neste handel vinner – mer enn halvparten kan gå til stopp og det likevel lønne seg, fordi gevinstene er større enn tapene.` : `Over mange handler har denne typen gitt ca. ${kr(avg)} per 100 kr risikert etter gebyr – altså tap over tid. Gevinstene er dobbelt så store som tapene, men det skjer for sjelden til å veie opp. Derfor anbefaler assistenten å stå over eller bare papirhandle.`));
+      out.firstChild.append(el('h2', null, 'Hva kan du forvente?'), el('span', 'ai-pill ' + (b.verdict === 'good' ? 'st-buy' : b.verdict === 'bad' ? 'st-sell' : 'st-wait'), verdTxt[0]));
+    }
+    // ---- slik gjør du det + ordliste
+    const how = document.getElementById('as-how'); const ol = el('ol', 'as-steps');
+    const step = t => ol.append(el('li', null, t));
+    if (x && x.dir < 0) step('Short betyr at du tjener når kursen faller. Det krever en konto som tillater det (for eksempel futures). Er du ny: hopp over short-signaler eller papirhandle dem.');
+    step(`Bestem hvor mye du tåler å tape på én handel – vanlig er maks 1 % av kontoen. Kalkulatoren i Daytrading-fanen regner ut hvor stor handelen da kan være.`);
+    step(x && mode !== 'none' ? `Gå inn rundt ${price(e)} – men bare når assistenten sier ${x.dir > 0 ? 'LONG' : 'SHORT'} nå (grønt/rødt lys), ikke når den sier vent.` : 'Vent til assistenten viser LONG nå eller SHORT nå.');
+    step(x && mode !== 'none' ? `Legg inn en stop-loss på ${price(x.stop)} med en gang. Den selger automatisk hvis du tar feil, så tapet blir lite.` : 'Legg alltid inn en stop-loss med en gang du går inn. Den begrenser tapet automatisk.');
+    step(x && mode !== 'none' ? `Legg inn en take-profit på ${price(tgt)}. Den tar gevinsten automatisk.` : 'Legg inn en take-profit (gevinstmål) samtidig.');
+    step('Har ingen av dem slått inn etter 6 timer, avslutt handelen. Ikke flytt stoppen lenger unna fordi du håper.');
+    step('Start med papirhandel: skriv ned signalene og se hvordan de går, uten ekte penger, i noen uker.');
+    const calcBtn = el('button', 'ai-btn', 'Regn ut handelsstørrelse →'); calcBtn.type = 'button';
+    calcBtn.addEventListener('click', () => { if (x && mode !== 'none') DTS.calc = { entry: e, stop: x.stop, dir: x.dir }; go('daytrading'); setTimeout(() => document.getElementById('dt-calc')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300); });
+    const gl = el('dl', 'as-gloss'); [['Long', 'Du kjøper og tjener hvis kursen stiger.'], ['Short', 'Du «selger først» og tjener hvis kursen faller.'], ['Stop-loss', 'Automatisk salg som stopper tapet hvis kursen går feil vei.'], ['Take-profit', 'Automatisk salg som tar gevinsten når målet nås.'], ['Papirhandel', 'Øve på handler uten ekte penger.'], ['R', 'Beløpet du risikerer. +2 R = du vant dobbelt så mye som du risikerte.']].forEach(([k, v]) => gl.append(el('dt', null, k), el('dd', null, v)));
+    const cbw = el('div'); cbw.append(calcBtn);
+    how.replaceChildren(el('h2', null, 'Slik gjør du det'), ol, cbw, el('h3', null, 'Ord du bør kjenne'), gl,
+      el('div', 'ai-warnbox', 'De fleste som daytrader taper penger over tid. Assistenten er et læringsverktøy, ikke en garanti. Ikke bruk penger du ikke har råd til å tape, og vær forsiktig med giring (lån). Ikke finansiell rådgivning.'));
+    // ---- alle coins
+    const cb = document.getElementById('as-coins'), grid = el('div', 'as-coins');
+    state.list.forEach(sym => { const LL = DTS.live[sym]; const k = el('button', 'as-coin' + (sym === s ? ' on' : '')); k.type = 'button';
+      if (!LL) { k.append(el('b', null, sym), el('span', 'ai-muted ai-cap', '…')); }
+      else { const pk = asPick(LL, sym), [t, tn] = AS_MODE[pk.mode](pk.x ? pk.x.dir : 0); k.append(el('b', null, NAMES[sym]), el('span', 'as-ctag as-' + tn, t)); }
+      k.addEventListener('click', () => dash.setParams({ coin: sym })); grid.append(k); });
+    cb.replaceChildren(el('h2', null, 'Alle coins akkurat nå'), grid);
+  }
+  function asChart(box, s, L, x, e, tgt) {
+    const raw = DTS.raw[s]; if (!raw) return; const B = raw.B, n = 32, a0 = Math.max(0, B.N - n), idx = d3.range(a0, B.N);
+    const W = Math.max(280, box.clientWidth || 600), H = W < 600 ? 220 : 260;
+    const lv = x ? [[tgt, 'Ta gevinst', 'var(--color-ok)'], [e, x.status === 'følg' ? 'Mulig inngang' : 'Inngang', 'var(--color-fg)'], [x.stop, 'Ta tapet', 'var(--color-bad)']] : [[L.pdh, 'Gårsdagens høyeste', 'var(--color-fg-muted)'], [L.pdl, 'Gårsdagens laveste', 'var(--color-fg-muted)']];
+    let lo = d3.min(idx, i => B.l[i]), hi = d3.max(idx, i => B.h[i]); const span = hi - lo;
+    const use = lv.filter(([v]) => v != null && (x || (v > lo - span && v < hi + span))); use.forEach(([v]) => { lo = Math.min(lo, v); hi = Math.max(hi, v); });
+    const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img').attr('aria-label', `Kursen siste 8 timer${x ? ' med inngang, mål og stopp' : ''}`);
+    const lab = use.map(([v, t]) => `${t} ${price(v)}`), mR = Math.min(170, measure(svg, lab) + 14);
+    const m = { l: 8, r: mR, t: 10, b: 22 }, xs = d3.scaleLinear([a0, B.N - 1 + 2], [m.l, W - m.r]), y = d3.scaleLinear([lo, hi], [H - m.b, m.t]);
+    if (x) { const z = (v1, v2, col) => svg.append('rect').attr('x', xs(B.N - 1)).attr('width', W - m.r - xs(B.N - 1)).attr('y', y(Math.max(v1, v2))).attr('height', Math.abs(y(v1) - y(v2))).attr('fill', col).attr('fill-opacity', 0.13);
+      if (x) { z(e, tgt, 'var(--color-ok)'); z(e, x.stop, 'var(--color-bad)'); } }
+    const ls = []; use.forEach(([v, t, col]) => { svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(v)).attr('y2', y(v)).attr('stroke', col).attr('stroke-width', 1.5).attr('stroke-dasharray', t.startsWith('Inngang') || t.startsWith('Mulig') ? null : '6 4'); ls.push({ y: y(v) + 4, t: `${t} ${price(v)}`, col }); });
+    ls.sort((a, b) => a.y - b.y); for (let i = 1; i < ls.length; i++) if (ls[i].y - ls[i - 1].y < 15) ls[i].y = ls[i - 1].y + 15;
+    ls.forEach(L2 => svg.append('text').attr('x', W - m.r + 6).attr('y', L2.y).attr('font-size', 'var(--cds-font-size-caption)').attr('fill', L2.col).text(L2.t));
+    const bw = Math.max(2, (W - m.l - m.r) / (n + 2) * 0.6), g = svg.append('g');
+    g.selectAll('line').data(idx).join('line').attr('x1', i => xs(i)).attr('x2', i => xs(i)).attr('y1', i => y(B.h[i])).attr('y2', i => y(B.l[i])).attr('stroke', i => B.c[i] >= B.o[i] ? 'var(--color-ok)' : 'var(--color-bad)');
+    g.selectAll('rect').data(idx).join('rect').attr('x', i => xs(i) - bw / 2).attr('width', bw).attr('y', i => y(Math.max(B.o[i], B.c[i]))).attr('height', i => Math.max(1, Math.abs(y(B.o[i]) - y(B.c[i])))).attr('fill', i => B.c[i] >= B.o[i] ? 'var(--color-ok)' : 'var(--color-bad)');
+    const xa = svg.append('g').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(xs).tickValues(idx.filter(i => (B.t[i] / DT.M15) % 8 === 0)).tickFormat(i => hm(B.t[i])).tickSizeOuter(0)); axisStyle(xa); xa.select('.domain').attr('stroke', 'var(--cds-chart-axis)');
+    box.append(el('p', 'ai-muted ai-cap', 'Kursen siste 8 timer. Hver strek er 15 minutter (grønn = steg, rød = falt).'));
+  }
   // ------------------------------------------------------------------ tegning
-  const RENDER = { oversikt: renderOverview, daytrading: renderDay, teknisk: renderTech, historikk: renderHist, signaler: renderSignals, avansert: renderAdvanced };
+  const RENDER = { oversikt: renderOverview, assistent: renderAssist, daytrading: renderDay, teknisk: renderTech, historikk: renderHist, signaler: renderSignals, avansert: renderAdvanced };
   const MAIN = ['ov-cards', 'ta-now', 'ta-chart', 'hs-summary', 'sg-stats', 'av-body'];
   MAIN.forEach(id => document.getElementById(id).classList.add('dash-skeleton'));
   dash.onData(() => {
