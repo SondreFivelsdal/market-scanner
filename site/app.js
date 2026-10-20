@@ -1118,12 +1118,12 @@
   function asChart(box, s, L, x, e, tgt) {
     const raw = DTS.raw[s]; if (!raw) return; const B = raw.B, n = 32, a0 = Math.max(0, B.N - n), idx = d3.range(a0, B.N);
     const W = Math.max(280, box.clientWidth || 600), H = W < 600 ? 220 : 260;
-    const lv = x ? [[tgt, 'Ta gevinst', 'var(--color-ok)'], [e, x.status === 'følg' ? 'Mulig inngang' : 'Inngang', 'var(--color-fg)'], [x.stop, 'Ta tapet', 'var(--color-bad)']] : [[L.pdh, 'Gårsdagens høyeste', 'var(--color-fg-muted)'], [L.pdl, 'Gårsdagens laveste', 'var(--color-fg-muted)']];
+    const lv = x ? [[tgt, 'Ta gevinst', 'var(--color-ok)'], [e, x.status === 'følg' ? 'Mulig inngang' : 'Inngang', 'var(--color-fg)'], [x.stop, 'Ta tapet', 'var(--color-bad)']] : [[L.pdh, 'Høyest i går', 'var(--color-fg-muted)'], [L.pdl, 'Lavest i går', 'var(--color-fg-muted)']];
     let lo = d3.min(idx, i => B.l[i]), hi = d3.max(idx, i => B.h[i]); const span = hi - lo;
     const use = lv.filter(([v]) => v != null && (x || (v > lo - span && v < hi + span))); use.forEach(([v]) => { lo = Math.min(lo, v); hi = Math.max(hi, v); });
     const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
     const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img').attr('aria-label', `Kursen siste 8 timer${x ? ' med inngang, mål og stopp' : ''}`);
-    const lab = use.map(([v, t]) => `${t} ${price(v)}`), mR = Math.min(170, measure(svg, lab) + 14);
+    const lab = use.map(([v, t]) => `${t} ${price(v)}`), mR = Math.min(200, measure(svg, lab) + 14);
     const m = { l: 8, r: mR, t: 10, b: 22 }, xs = d3.scaleLinear([a0, B.N - 1 + 2], [m.l, W - m.r]), y = d3.scaleLinear([lo, hi], [H - m.b, m.t]);
     if (x) { const z = (v1, v2, col) => svg.append('rect').attr('x', xs(B.N - 1)).attr('width', W - m.r - xs(B.N - 1)).attr('y', y(Math.max(v1, v2))).attr('height', Math.abs(y(v1) - y(v2))).attr('fill', col).attr('fill-opacity', 0.13);
       if (x) { z(e, tgt, 'var(--color-ok)'); z(e, x.stop, 'var(--color-bad)'); } }
