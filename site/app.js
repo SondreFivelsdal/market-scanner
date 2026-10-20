@@ -7,7 +7,7 @@
   const HZL = { 7: '1 uke', 30: '30 dager', 90: '3 måneder', 180: '6 måneder', 365: '12 måneder' };
   const HZS = { 7: '1 u', 30: '30 d', 90: '3 mnd', 180: '6 mnd', 365: '12 mnd' };
   const symList = () => { const a = ORDER.filter(s => state.coins[s]); return a.length > 1 ? a.slice(0, -1).join(', ') + ' og ' + a[a.length - 1] : a.join(''); };
-  const TABS = ['oversikt', 'assistent', 'daytrading', 'teknisk', 'historikk', 'signaler', 'avansert'];
+  const TABS = ['oversikt', 'assistent', 'plan', 'daytrading', 'teknisk', 'historikk', 'signaler', 'avansert'];
   const STATUS_CLS = { buy: 'st-buy', wait: 'st-wait', sell: 'st-sell', none: 'st-none' };
   const DAY = 864e5;
   const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
@@ -1136,8 +1136,136 @@
     const xa = svg.append('g').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(xs).tickValues(idx.filter(i => (B.t[i] / DT.M15) % 8 === 0)).tickFormat(i => hm(B.t[i])).tickSizeOuter(0)); axisStyle(xa); xa.select('.domain').attr('stroke', 'var(--cds-chart-axis)');
     box.append(el('p', 'ai-muted ai-cap', 'Kursen siste 8 timer. Hver strek er 15 minutter (grønn = steg, rød = falt).'));
   }
+  // ------------------------------------------------------------------ langsiktig kjøps- og salgsplan (site/plan.js)
+  const PL = { cache: {}, startY: 2, bt: {} };
+  const kr = (v, d = 0) => v == null || !isFinite(v) ? '–' : nf(v, { maximumFractionDigits: d }) + ' kr';
+  function plPrep(sym) { const f = fullHistory(sym); if (!f || !f.length) return null; const key = f.length + ':' + f[f.length - 1].t;
+    if (!PL.cache[sym] || PL.cache[sym].key !== key) PL.cache[sym] = { key, P: PLAN.prepare(f.map(r => r.t), f.map(r => r.c)) }; return PL.cache[sym].P; }
+  function plSettings() { let s = {}; try { s = JSON.parse(localStorage.getItem('plan') || '{}'); } catch (e) { /* ingen lagring */ } return { budget: s.budget > 0 ? s.budget : 10000, months: s.months > 0 ? s.months : 24, hold: s.hold >= 0 ? s.hold : 0 }; }
+  function plSave(v) { try { localStorage.setItem('plan', JSON.stringify(v)); } catch (e) { /* ingen lagring */ } }
+  function renderPlan() {
+    const c = cur(); if (!c) return; const s = c.sym, main = document.getElementById('pl-main');
+    const ids = ['pl-ladder', 'pl-calc', 'pl-chart', 'pl-bt', 'pl-how'];
+    if (typeof PLAN === 'undefined') { main.replaceChildren(el('p', 'ai-muted', 'Planmotoren lastet ikke.')); return; }
+    const P = plPrep(s);
+    if (!P) { main.replaceChildren(el('h2', null, `Langsiktig plan – ${NAMES[s]}`), el('p', 'ai-muted', 'Henter hele kurshistorikken …')); ids.forEach(id => document.getElementById(id).replaceChildren()); return; }
+    const S = plSettings(), weeks = Math.max(1, Math.round(S.months * 52 / 12)), base = S.budget / weeks;
+    const n = P.N - 1, lp = livePrice(c), px = lp && lp.p ? lp.p : P.c[n], ath = Math.max(P.ath[n], px), dd = px / ath - 1;
+    const pct = P.pct[n], k = PLAN.ddMult(dd), sh = PLAN.sellShare(pct), z = PLAN.zone(pct), athT = P.t[P.athI];
+    // ---- hovedkort
+    const ch = el('div', 'ai-chips'); const chip = (a, b, cls) => { const x = el('span', 'ai-chip'); x.append(el('span', 'ai-muted', a), el('b', cls, b)); ch.append(x); };
+    chip('Kurs nå', price(px)); chip('Høyeste hittil', `${price(ath)} (${dfmt(athT)})`); chip('Fall fra toppen', pct2(dd * 100), dd < -0.9 ? 'ai-warn' : dd < -0.4 ? 'ai-pos' : dd > -0.2 ? 'ai-neg' : null);
+    if (z) chip('Prisnivå mot egen historikk', `${z.label} (${Math.round(pct * 100)} %)`, z.cls === 'sell' || z.cls === 'warm' ? 'ai-neg' : z.cls === 'vbuy' || z.cls === 'buy' ? 'ai-pos' : null);
+    const light = (tone, title, txt) => { const d = el('div', 'as-light as-' + tone); d.append(el('span', 'as-dot'), el('div')); d.lastChild.append(el('div', 'as-title', title), el('p', null, txt)); return d; };
+    const lights = [];
+    if (dd < -0.9) lights.push(el('div', 'ai-warnbox', `${NAMES[s]} er over 90 % under toppen fra ${dfmt(athT)}. Så store fall skjer ofte med coins som aldri kommer tilbake, og planen har ikke fungert i slike tilfeller (se testen under). Vurder å stå over eller bruke et mye mindre beløp.`));
+    if (k > 0) lights.push(light('ok', `Kjøp denne uken: ${kr(base * k)}`, `Kursen er ${nf(-dd * 100, { maximumFractionDigits: 0 })} % under toppen, så planen kjøper ${nf(k, { maximumFractionDigits: 1 })} × grunnbeløpet (${kr(base)} per uke).`));
+    else lights.push(light('muted', 'Ikke kjøp nå – vent', `Kursen er bare ${nf(-dd * 100, { maximumFractionDigits: 0 })} % under toppen. Planen sparer pengene til kursen har falt minst 20 % fra toppen (under ${price(ath * 0.8)}).`));
+    if (sh > 0) lights.push(light('bad', `Selg ${nf(sh * 100, { maximumFractionDigits: 0 })} % av beholdningen denne uken`, `Kursen er dyr mot sin egen historikk (prisnivå ${Math.round(pct * 100)} %). Planen tar ut litt gevinst hver uke så lenge det varer.`));
+    else if (pct != null) lights.push(el('p', 'ai-cap', `Salg: ingenting nå. Planen begynner å selge litt og litt over ${price(P.levels[0.9])}.`));
+    main.replaceChildren(el('div', 'ai-row'), el('p', 'ai-muted', 'Fordel kjøpene over lang tid, kjøp mer jo lenger kursen har falt fra toppen, og selg litt og litt når den er dyr. Du treffer aldri bunnen eller toppen, men snittprisen blir ofte lavere enn ved å kjøpe likt hver gang.'), ch, ...lights);
+    main.firstChild.append(el('h2', null, `Langsiktig plan – ${NAMES[s]}`), el('span', 'ai-muted ai-cap', `Grunnbeløp ${kr(base)} per uke (${kr(S.budget)} over ${S.months} mnd)`));
+    // ---- kjøps- og salgstrapp
+    const lad = document.getElementById('pl-ladder');
+    const tb = (heads, rows) => { const tw = el('div', 'ai-tablewrap'), t = el('table', 'ai-table ai-proj'), hr = el('tr'); heads.forEach((h, i) => hr.append(el('th', i ? null : 'l', h))); const th = el('thead'); th.append(hr); t.append(th); const b = el('tbody');
+      rows.forEach(r => { const tr = el('tr'); if (r.on) tr.className = 'hl'; r.cells.forEach((v, i) => tr.append(el('td', (i ? '' : 'l ') + (r.cls && r.cls[i] || ''), v))); b.append(tr); }); t.append(b); tw.append(t); return tw; };
+    const bl = [[0, -0.2, 0], [-0.2, -0.4, 0.5], [-0.4, -0.6, 1], [-0.6, -0.75, 2], [-0.75, -1, 3]];
+    const buyRows = bl.map(([a, b2, f]) => ({ on: dd <= a && dd > b2, cells: [a === 0 ? 'Mindre enn 20 % under toppen' : b2 === -1 ? `Mer enn ${-a * 100} % under` : `${-a * 100}–${-b2 * 100} % under toppen`, a === 0 ? `over ${price(ath * 0.8)}` : b2 === -1 ? `under ${price(ath * (1 + a))}` : `${price(ath * (1 + b2))}–${price(ath * (1 + a))}`, f ? `${nf(f, { maximumFractionDigits: 1 })} ×` : 'Ingen kjøp', f ? kr(base * f) : '–'], cls: [null, null, f ? 'ai-pos' : 'ai-muted', null] }));
+    const L = P.levels, sl = L[0.9] ? [[null, L[0.9], 0, 'Under ' + price(L[0.9])], [L[0.9], L[0.95], 0.05], [L[0.95], L[0.98], 0.1], [L[0.98], null, 0.2]] : null;
+    const sellRows = sl ? sl.map(([a, b2, f, txt]) => ({ on: (a == null || px >= a) && (b2 == null || px < b2), cells: [txt || (b2 ? `${price(a)}–${price(b2)}` : `Over ${price(a)}`), f ? `${nf(f * 100, { maximumFractionDigits: 0 })} % av beholdningen per uke` : 'Ingen salg'], cls: [null, f ? 'ai-neg' : 'ai-muted'] })) : null;
+    const bc = el('div', 'ai-card'), sc = el('div', 'ai-card');
+    bc.append(el('h2', null, 'Kjøpstrapp'), el('p', 'ai-muted', `Basert på høyeste kurs hittil, ${price(ath)}. Jo lenger ned, jo mer kjøper du hver uke. Raden for i dag er markert.`), tb(['Fall fra toppen', 'Kurs', 'Faktor', 'Kjøp per uke'], buyRows),
+      el('p', 'ai-cap', 'Kommer kursen over toppen igjen, flytter trappen seg opp med den.'));
+    sc.append(el('h2', null, 'Salgstrapp'), sellRows ? el('p', 'ai-muted', `Når ${NAMES[s]} er dyr mot sin egen historikk (kurs delt på 200-dagers snittet), selger planen litt og litt. Nivåene følger 200-dagers snittet (nå ${price(P.sma[n])}) og flytter seg litt hver dag.`) : el('p', 'ai-muted', 'For kort historikk til å beregne salgsnivåer (trenger over 1,5 år).'), ...(sellRows ? [tb(['Kurs', 'Selg'], sellRows)] : []),
+      el('p', 'ai-cap', 'Salgene skjer i små biter over mange uker, fordi toppen ofte varer lenger enn man tror.'));
+    lad.replaceChildren(bc, sc);
+    // ---- kalkulator
+    const calc = document.getElementById('pl-calc'), form = el('div', 'dt-form');
+    const inp = (lab, key, step, help) => { const w = el('label', 'dt-in'); w.append(el('span', 'ai-muted', lab)); const i = el('input'); i.type = 'number'; i.step = step; i.min = 0; i.inputMode = 'decimal'; i.value = S[key]; i.dataset.k = key; w.append(i); if (help) w.append(el('span', 'ai-cap ai-muted', help)); return w; };
+    form.append(inp('Totalt beløp å investere (kr)', 'budget', 'any'), inp('Over hvor mange måneder', 'months', '1', '12–48 er vanlig'), inp(`Antall ${s} du eier nå`, 'hold', 'any', 'For å regne ut salg'));
+    const out = el('dl', 'ai-kv');
+    const upd = () => { const g = kk => parseFloat((form.querySelector(`[data-k="${kk}"]`).value || '0').replace(',', '.')) || 0; const v = { budget: g('budget'), months: g('months'), hold: g('hold') }; plSave(v);
+      const w = Math.max(1, Math.round(v.months * 52 / 12)), b = v.budget / w; out.replaceChildren(); const row = (a, x, cls) => out.append(el('dt', null, a), el('dd', cls, x));
+      row('Grunnbeløp per uke', kr(b)); row('Kjøp denne uken', k > 0 ? `${kr(b * k)} (${nf(k, { maximumFractionDigits: 1 })} ×)` : '0 kr – vent', k > 0 ? 'ai-pos' : 'ai-muted');
+      row('Det gir', k > 0 ? `ca. ${nf(b * k / px, { maximumSignificantDigits: 4 })} ${s}` : '–');
+      if (v.hold > 0) row('Selg denne uken', sh > 0 ? `${nf(v.hold * sh, { maximumSignificantDigits: 4 })} ${s} (ca. ${kr(v.hold * sh * px)})` : 'Ingenting', sh > 0 ? 'ai-neg' : 'ai-muted');
+      row('Merk', 'I billige perioder kjøper planen mer enn grunnbeløpet, så pengene kan ta slutt før perioden er over. Er det penger igjen på slutten, kjøpes resten da.'); };
+    form.querySelectorAll('input').forEach(i => i.addEventListener('input', () => { upd(); clearTimeout(PL.tm); PL.tm = setTimeout(() => renderPlan(), 600); }));
+    calc.replaceChildren(el('h2', null, 'Din plan'), el('p', 'ai-muted', 'Tallene huskes i denne nettleseren. Sjekk planen én gang i uken, for eksempel hver mandag.'), form, out); upd();
+    // ---- graf og eksempel
+    plChart(c, P, S, weeks);
+    // ---- historisk test
+    plBT(s, P);
+    // ---- slik fungerer det
+    const how = document.getElementById('pl-how'), ol = el('ol', 'as-steps');
+    ['Bestem et totalbeløp og en periode (for eksempel 2 år). Det gir et grunnbeløp per uke.', 'Én gang i uken: se hvilken rad i kjøpstrappen kursen er i, og kjøp grunnbeløpet ganget med faktoren. Nær toppen kjøper du ingenting og sparer pengene.', 'Når kursen er dyr (salgstrappen), selger du den andelen som står der, hver uke så lenge det varer.', 'Ikke prøv å treffe bunnen eller toppen. Poenget er å kjøpe mest når det er billig og selge litt når det er dyrt.', 'Bruk planen på store, etablerte coins. På små coins kan et stort fall bety at coinen er på vei mot null – da blir «kjøp mer» feil.']
+      .forEach(t => ol.append(el('li', null, t)));
+    how.replaceChildren(el('h2', null, 'Slik fungerer planen'), ol, el('div', 'ai-warnbox', 'Planen bygger på hvordan kursene har oppført seg siden 2017–2020. Historien gjentar seg ikke nøyaktig, og en coin kan falle mer enn noen gang før. Ikke invester penger du kan trenge, og spre risikoen. Ikke finansiell rådgivning.'));
+  }
+  const pct2 = v => pct(v, 0);
+  function plChart(c, P, S, weeks) {
+    const box = document.getElementById('pl-chart'), s = c.sym, n = P.N - 1;
+    const yrs = [1, 2, 3, 4].filter(y => P.N - y * 365 > Math.max(0, P.pct.findIndex(v => v != null)) || y === 1);
+    if (!yrs.includes(PL.startY)) PL.startY = yrs[yrs.length - 1];
+    const i0 = Math.max(0, n - PL.startY * 365), w = Math.min(weeks, Math.floor((n - i0) / 7) || 1);
+    const R = { plan: PLAN.simulate(P, i0, S.budget, w, 'plan+sell', { rebuy: true }), buy: PLAN.simulate(P, i0, S.budget, w, 'plan'), dca: PLAN.simulate(P, i0, S.budget, w, 'dca'), lump: PLAN.simulate(P, i0, S.budget, w, 'lump') };
+    const seg = el('div', 'ai-seg'); yrs.forEach(y => { const b = el('button', null, `${y} år siden`); b.type = 'button'; b.setAttribute('aria-pressed', y === PL.startY ? 'true' : 'false'); b.addEventListener('click', () => { PL.startY = y; plChart(c, P, S, weeks); }); seg.append(b); });
+    const svgBox = el('div', 'ai-chart'); const head = el('div', 'ai-row'); head.append(el('h2', null, 'Hvordan planen ville gått'), seg);
+    const lg = el('div', 'ai-legend'); const it = (sty, txt) => { const sp = el('span'); const i = el('i'); Object.assign(i.style, sty); sp.append(i, document.createTextNode(txt)); return sp; };
+    lg.append(it({ background: 'var(--color-ok)', height: '10px', width: '10px', border: '0', borderRadius: '50%' }, 'Kjøp (større = mer)'), it({ background: 'var(--color-bad)', height: '10px', width: '10px', border: '0', borderRadius: '50%' }, 'Salg'), it({ color: 'var(--color-fg-muted)', borderTopStyle: 'dashed' }, 'Høyeste hittil'), it({ background: 'var(--color-ok)', opacity: '.25', height: '10px', border: '0' }, 'Kjøpssoner (20/40/60/75 % under toppen)'));
+    const tw = el('div', 'ai-tablewrap'), t = el('table', 'ai-table ai-proj'), hr = el('tr'); ['Metode', 'Snittpris', 'Verdi nå', 'Endring', 'Største fall underveis'].forEach((h, i) => hr.append(el('th', i ? null : 'l', h))); const th = el('thead'); th.append(hr); t.append(th);
+    const bd = el('tbody'); [['Planen (kjøp + salg)', R.plan], ['Planen (bare kjøp)', R.buy], ['Fast beløp hver uke', R.dca], ['Alt på en gang', R.lump]].forEach(([lab, r], j) => { const tr = el('tr'); if (j === 0) tr.className = 'hl';
+      tr.append(el('td', 'l', lab), el('td', null, price(r.avg)), el('td', null, kr(r.value)), el('td', sgnCls(r.ret), pct(r.ret * 100, 0)), el('td', 'ai-neg', pct(r.mdd * 100, 0))); bd.append(tr); }); t.append(bd); tw.append(t);
+    const nb = R.plan.events.filter(e => e.type === 'kjøp').length, ns = R.plan.events.filter(e => e.type === 'salg').length;
+    box.replaceChildren(head, el('p', 'ai-muted', `Eksempel: start ${dfmt(P.t[i0])} med ${kr(S.budget)} fordelt over ${w} uker. ${nb} kjøp og ${ns} salg. Pengene fra salg brukes til å kjøpe igjen når kursen er langt under toppen.`), svgBox, lg, tw);
+    requestAnimationFrame(() => {
+      const W = Math.max(300, svgBox.clientWidth || 600), H = W < 600 ? 300 : 380, a0 = Math.max(0, i0 - 120), idx = d3.range(a0, n + 1);
+      const lo = d3.min(idx, i => P.c[i]) * 0.9, hi = d3.max(idx, i => P.ath[i]) * 1.05;
+      const svg = d3.select(svgBox).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img').attr('aria-label', `Kurs for ${NAMES[s]} med planens kjøp og salg`);
+      const y = d3.scaleLog([lo, hi], [H - 24, 10]), ty = y.ticks(5).filter((v, i, a) => a.length < 8 || i % 2 === 0), m = { l: measure(svg, ty.map(price)) + 10, r: 8 };
+      const x = d3.scaleUtc([P.t[a0], P.t[n]], [m.l, W - m.r]);
+      svg.append('g').selectAll('line').data(ty).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
+      const ya = svg.append('g').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).tickValues(ty).tickFormat(price).tickSize(0)); ya.select('.domain').remove(); axisStyle(ya);
+      const xa = svg.append('g').attr('transform', `translate(0,${H - 24})`).call(d3.axisBottom(x).ticks(Math.max(2, Math.floor(W / 110))).tickSizeOuter(0)); xa.select('.domain').attr('stroke', 'var(--cds-chart-axis)'); axisStyle(xa);
+      [[0.8, 0.6, 0.1], [0.6, 0.4, 0.16], [0.4, 0.25, 0.22], [0.25, 0.01, 0.28]].forEach(([u, d2, op]) => svg.append('path').datum(idx).attr('fill', 'var(--color-ok)').attr('fill-opacity', op)
+        .attr('d', d3.area().x(i => x(P.t[i])).y0(i => y(Math.max(lo, P.ath[i] * d2))).y1(i => y(Math.max(lo, P.ath[i] * u)))));
+      svg.append('path').datum(idx).attr('fill', 'none').attr('stroke', 'var(--color-fg-muted)').attr('stroke-dasharray', '4 3').attr('d', d3.line().x(i => x(P.t[i])).y(i => y(P.ath[i])));
+      svg.append('line').attr('x1', x(P.t[i0])).attr('x2', x(P.t[i0])).attr('y1', 10).attr('y2', H - 24).attr('stroke', 'var(--cds-chart-axis)').attr('stroke-dasharray', '2 3');
+      svg.append('path').datum(idx).attr('fill', 'none').attr('stroke', dash.colors[0]).attr('stroke-width', 1.8).attr('d', d3.line().x(i => x(P.t[i])).y(i => y(P.c[i])));
+      const mx = d3.max(R.plan.events, e => e.amt) || 1;
+      svg.append('g').selectAll('circle').data(R.plan.events).join('circle').attr('cx', e => x(e.t)).attr('cy', e => y(e.px)).attr('r', e => 2 + 6 * Math.sqrt(e.amt / mx))
+        .attr('fill', e => e.type === 'kjøp' ? 'var(--color-ok)' : 'var(--color-bad)').attr('fill-opacity', 0.75).attr('stroke', 'var(--color-panel)').attr('stroke-width', 0.8);
+      const tip = tipOf(svgBox), bis = d3.bisector(i => P.t[i]).center;
+      svg.append('rect').attr('x', m.l).attr('y', 0).attr('width', W - m.l - m.r).attr('height', H - 24).attr('fill', 'transparent')
+        .on('pointermove', ev => { const [px2] = d3.pointer(ev); const i = idx[bis(idx, x.invert(px2))]; if (i == null) return; const evs = R.plan.events.filter(e => Math.abs(e.i - i) <= 3);
+          tip.replaceChildren(el('div', 'd', dfmt(P.t[i])), el('div', null, `Kurs ${price(P.c[i])} · ${pct(P.dd[i] * 100, 0)} fra toppen`), ...evs.map(e => el('div', e.type === 'kjøp' ? 'ai-pos' : 'ai-neg', `${e.type === 'kjøp' ? 'Kjøpte' : 'Solgte'} for ${kr(e.amt)}`))); const kx = svgBox.clientWidth / W; place(svgBox, tip, x(P.t[i]) * kx, y(P.c[i]) * kx); })
+        .on('pointerleave', () => { tip.hidden = true; });
+    });
+  }
+  function plBT(s, P) {
+    const box = document.getElementById('pl-bt');
+    if (!PL.bt[s] || PL.bt[s].N !== P.N) { const first = P.pct.findIndex(v => v != null), rows = [];
+      for (let i0 = Math.max(first, 0); i0 + 104 * 7 + 30 <= P.N - 1; i0 += 30) { const end = Math.min(P.N - 1, i0 + 1460), r = {};
+        for (const m of ['dca', 'plan', 'plan+sell', 'lump']) r[m] = PLAN.simulate(P, i0, 10000, 104, m, { end, rebuy: true }); rows.push(r); }
+      PL.bt[s] = { N: P.N, rows }; }
+    const rows = PL.bt[s].rows, med = a => { const b = a.filter(v => v != null && isFinite(v)).sort((p, q) => p - q); return b.length ? b[Math.floor(b.length / 2)] : null; };
+    if (rows.length < 5) { box.replaceChildren(el('h2', null, 'Har planen fungert før?'), el('p', 'ai-muted', `For kort historikk for ${NAMES[s]} til å teste planen (trenger minst 3–4 år).`)); return; }
+    const av = rows.map(r => r.plan.avg / r.dca.avg - 1), vp = rows.map(r => r['plan+sell'].value / r.dca.value - 1), vb = rows.map(r => r.plan.value / r.dca.value - 1);
+    const kv = el('dl', 'ai-kv'); const row = (a, b, cls) => kv.append(el('dt', null, a), el('dd', cls, b));
+    row('Testet', `${rows.length} startdatoer (hver måned), 2 års kjøpsperiode, målt etter opptil 4 år`);
+    row('Snittpris mot fast ukentlig kjøp', `${pct(med(av) * 100, 0)} i median – lavere i ${Math.round(av.filter(v => v < 0).length / rows.length * 100)} % av startene`, med(av) < 0 ? 'ai-pos' : 'ai-neg');
+    row('Sluttverdi, bare kjøp', `${pct(med(vb) * 100, 0)} mot fast kjøp (bedre i ${Math.round(vb.filter(v => v > 0).length / rows.length * 100)} %)`, sgnCls(med(vb)));
+    row('Sluttverdi, kjøp + salg', `${pct(med(vp) * 100, 0)} mot fast kjøp (bedre i ${Math.round(vp.filter(v => v > 0).length / rows.length * 100)} %)`, sgnCls(med(vp)));
+    row('Største fall underveis (median)', `fast kjøp ${pct(med(rows.map(r => r.dca.mdd)) * 100, 0)} · planen med salg ${pct(med(rows.map(r => r['plan+sell'].mdd)) * 100, 0)}`);
+    const tw = el('div', 'ai-tablewrap'), t = el('table', 'ai-table ai-proj'), hr = el('tr'); ['Coin', 'Snittpris mot fast kjøp', 'Lavere i', 'Sluttverdi med salg'].forEach((h, i) => hr.append(el('th', i ? null : 'l', h))); const th = el('thead'); th.append(hr); t.append(th);
+    const bd = el('tbody'); [['Bitcoin', '−19 %', '98 %', '+33 %'], ['Ethereum', '−23 %', '100 %', '+32 %'], ['XRP', '−12 %', '100 %', '+81 %'], ['BNB', '−7 %', '74 %', '+5 %'], ['Solana', '−16 %', '75 %', '+28 %'], ['Cardano', '−1 %', '57 %', '+14 %'], ['Chainlink', '+1 %', '50 %', '+6 %'], ['Dogecoin', '+34 %', '32 %', '−5 %'], ['The Sandbox', '+46 %', '0 %', '−30 %']]
+      .forEach(r => { const tr = el('tr'); const cl = [ 'l', r[1].startsWith('−') ? 'ai-pos' : 'ai-neg', null, r[3].startsWith('+') ? 'ai-pos' : 'ai-neg' ]; r.forEach((v, i) => tr.append(el('td', cl[i], v))); bd.append(tr); }); t.append(bd); tw.append(t);
+    box.replaceChildren(el('h2', null, `Har planen fungert før for ${NAMES[s]}?`), kv, el('h3', null, 'Samme test på 9 coins (2019–2026)'), tw,
+      el('p', 'ai-cap', 'Planen fungerte godt på store coins som hentet seg inn til nye topper. På Dogecoin og The Sandbox ble den dårligere enn fast kjøp: når en coin aldri kommer tilbake, betyr «kjøp mer når den faller» at du kjøper mer av noe som taper seg. Bruk den derfor på coins du har tro på over mange år.'),
+      el('p', 'ai-muted', 'Kjøpsreglene ble valgt blant tre testede varianter (fall fra toppen, prisnivå mot egen historikk og faste Mayer-grenser); fall fra toppen var klart best og stabil over ulike perioder. Startdatoene overlapper og dekker bare 1–2 markedssykluser, så tallene er usikre. Gebyr 0,1 % per kjøp og salg er tatt med.'));
+  }
   // ------------------------------------------------------------------ tegning
-  const RENDER = { oversikt: renderOverview, assistent: renderAssist, daytrading: renderDay, teknisk: renderTech, historikk: renderHist, signaler: renderSignals, avansert: renderAdvanced };
+  const RENDER = { oversikt: renderOverview, assistent: renderAssist, plan: renderPlan, daytrading: renderDay, teknisk: renderTech, historikk: renderHist, signaler: renderSignals, avansert: renderAdvanced };
   const MAIN = ['ov-cards', 'ta-now', 'ta-chart', 'hs-summary', 'sg-stats', 'av-body'];
   MAIN.forEach(id => document.getElementById(id).classList.add('dash-skeleton'));
   dash.onData(() => {

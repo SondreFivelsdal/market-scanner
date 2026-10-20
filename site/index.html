@@ -48,6 +48,7 @@ p.dash-skeleton { min-height: 1.4em; }
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
 <script src="dash-shim.js"></script>
 <script src="daytrade.js"></script>
+<script src="plan.js"></script>
 </head>
 <body>
 <div id="dash-root">
@@ -200,6 +201,7 @@ details.ai-more[open] > summary { margin-bottom: var(--cds-gap-sm); }
   <nav class="ai-tabs" role="tablist" aria-label="Sider" id="faner">
     <button role="tab" data-tab="oversikt" id="tab-oversikt">Oversikt</button>
     <button role="tab" data-tab="assistent" id="tab-assistent">Trade-assistent</button>
+    <button role="tab" data-tab="plan" id="tab-plan">Langsiktig plan</button>
     <button role="tab" data-tab="daytrading" id="tab-daytrading">Daytrading</button>
     <button role="tab" data-tab="teknisk" id="tab-teknisk">Teknisk analyse</button>
     <button role="tab" data-tab="historikk" id="tab-historikk">Historiske scenarioer</button>
@@ -296,6 +298,17 @@ details.ai-more[open] > summary { margin-bottom: var(--cds-gap-sm); }
       <div class="ai-grid2"><div class="ai-card" id="as-why"></div><div class="ai-card" id="as-outcome"></div></div>
       <div class="ai-card" id="as-coins"></div>
       <div class="ai-card" id="as-how"></div>
+    </div>
+  </section>
+
+  <section class="ai-page" id="plan" role="tabpanel" aria-labelledby="tab-plan" hidden>
+    <div class="ai-stack">
+      <div class="ai-card" id="pl-main"></div>
+      <div class="ai-grid2" id="pl-ladder"></div>
+      <div class="ai-card" id="pl-calc"></div>
+      <div class="ai-card" id="pl-chart"></div>
+      <div class="ai-card" id="pl-bt"></div>
+      <div class="ai-card" id="pl-how"></div>
     </div>
   </section>
 

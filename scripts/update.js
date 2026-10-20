@@ -69,7 +69,7 @@ async function notify(title, lines, priority = 3, tags = []) {
   fs.writeFileSync(path.join(OUT, 'candles_4h.json'), JSON.stringify(h4));
   // cache-busting: nye versjoner av app.js/dash-shim.js lastes med en gang
   const ver = (process.env.GITHUB_SHA || String(Date.now())).slice(0, 8), ix = path.join(OUT, '..', 'index.html');
-  fs.writeFileSync(ix, fs.readFileSync(ix, 'utf8').replace(/src="(app|dash-shim|daytrade)\.js[^"]*"/g, `src="$1.js?v=${ver}"`));
+  fs.writeFileSync(ix, fs.readFileSync(ix, 'utf8').replace(/src="(app|dash-shim|daytrade|plan)\.js[^"]*"/g, `src="$1.js?v=${ver}"`));
   const lastD = R.asOf;
   const coins = {};
   for (const c of R.coins) coins[c.sym] = { code: c.status.code, label: c.status.label, score: c.score, price: c.price,
