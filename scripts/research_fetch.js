@@ -3,8 +3,9 @@
 // Ut: research/<SYM>_<iv>.json.gz med [[t,o,h,l,c,v,qv,n,tbv], ...] (lukkede candles).
 const fs = require('fs'), zlib = require('zlib'), path = require('path');
 const API = 'https://data-api.binance.vision/api/v3/klines';
-const COINS = (process.env.COINS || 'BTC,ETH,XRP,ADA,POL,SAND,SOL').split(',');
-const IVS = { '5m': 3e5, '15m': 9e5, '1h': 36e5, '4h': 144e5 };
+const COINS = (process.env.COINS || 'BTC,ETH,XRP,ADA,POL,SAND,SOL,BNB,LINK,DOGE').split(',');
+const ALLIV = { '5m': 3e5, '15m': 9e5, '1h': 36e5, '4h': 144e5, '1d': 864e5 };
+const IVS = Object.fromEntries((process.env.INTERVALS || '5m,15m,1h,4h,1d').split(',').map(k => [k, ALLIV[k]]));
 const YEARS = +(process.env.YEARS || 4);
 const OUT = path.join(process.cwd(), 'research'); fs.mkdirSync(OUT, { recursive: true });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -13,7 +14,7 @@ async function get(url) { for (let i = 0; i < 6; i++) { try { const r = await fe
   const now = Date.now(), from = now - YEARS * 365 * 864e5, summary = [];
   for (const s of COINS) for (const [iv, step] of Object.entries(IVS)) {
     if (iv === '5m' && !['BTC', 'ETH', 'SOL', 'XRP'].includes(s)) continue;
-    const ivFrom = iv === '5m' ? now - 2 * 365 * 864e5 : from;
+    const ivFrom = iv === '5m' ? now - 2 * 365 * 864e5 : iv === '1d' ? Date.UTC(2017, 0, 1) : from;
     const rows = []; let start = ivFrom;
     for (;;) { const k = await get(`${API}?symbol=${s}USDT&interval=${iv}&startTime=${start}&limit=1000`); if (!k.length) break;
       for (const x of k) if (x[6] < now) rows.push([x[0], +x[1], +x[2], +x[3], +x[4], +x[5], +x[7], x[8], +x[9]]);
@@ -21,5 +22,6 @@ async function get(url) { for (let i = 0; i < 6; i++) { try { const r = await fe
     fs.writeFileSync(path.join(OUT, `${s}_${iv}.json.gz`), zlib.gzipSync(JSON.stringify(rows)));
     summary.push(`${s} ${iv}: ${rows.length} candles fra ${rows.length ? new Date(rows[0][0]).toISOString().slice(0, 10) : '–'}`); console.log(summary[summary.length - 1]);
   }
-  fs.writeFileSync(path.join(OUT, 'README.md'), `Forskningsdata hentet ${new Date().toISOString()}\n\n` + summary.map(x => '- ' + x).join('\n') + '\n');
+  const rp = path.join(OUT, 'README.md'), old = fs.existsSync(rp) ? fs.readFileSync(rp, 'utf8').split('\n').filter(x => x.startsWith('- ') && !summary.some(y => x.startsWith('- ' + y.split(':')[0] + ':'))) : [];
+  fs.writeFileSync(rp, `Forskningsdata oppdatert ${new Date().toISOString()}\n\n` + [...old, ...summary.map(x => '- ' + x)].join('\n') + '\n');
 })().catch(e => { console.error(e); process.exit(1); });

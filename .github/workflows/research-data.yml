@@ -1,8 +1,16 @@
 name: Hent forskningsdata
 
-# Manuell: henter flere års candles til grenen research-data (brukes til å teste nye daytrading-oppsett).
+# Manuell: henter candles til grenen research-data (brukes til å teste nye oppsett og planer).
+# Eksisterende filer på grenen beholdes; bare de valgte intervallene hentes på nytt.
 on:
   workflow_dispatch:
+    inputs:
+      intervals:
+        description: 'Intervaller (kommaseparert): 5m,15m,1h,4h,1d'
+        default: '5m,15m,1h,4h,1d'
+      coins:
+        description: 'Coins (kommaseparert)'
+        default: 'BTC,ETH,XRP,ADA,POL,SAND,SOL,BNB,LINK,DOGE'
 
 permissions:
   contents: write
@@ -10,22 +18,30 @@ permissions:
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Hent eksisterende forskningsdata
+        run: |
+          mkdir -p research
+          if git fetch -q origin research-data; then git --work-tree=research checkout origin/research-data -- . && git reset -q; fi
+          ls research | head -50
       - name: Hent candles
         run: node scripts/research_fetch.js
+        env:
+          INTERVALS: ${{ inputs.intervals }}
+          COINS: ${{ inputs.coins }}
       - name: Lagre på grenen research-data
         run: |
           mkdir -p /tmp/rd && cp -r research/. /tmp/rd/
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout --orphan research-data
+          git checkout -q --orphan research-data
           git rm -rfq . >/dev/null
           cp -r /tmp/rd/. .
           git add -A
           git commit -qm "Forskningsdata $(date -u +%F)"
-          git push -f origin research-data
+          git push -qf origin research-data
