@@ -1,0 +1,31 @@
+name: Hent forskningsdata
+
+# Manuell: henter flere års candles til grenen research-data (brukes til å teste nye daytrading-oppsett).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Hent candles
+        run: node scripts/research_fetch.js
+      - name: Lagre på grenen research-data
+        run: |
+          mkdir -p /tmp/rd && cp -r research/. /tmp/rd/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan research-data
+          git rm -rfq . >/dev/null
+          cp -r /tmp/rd/. .
+          git add -A
+          git commit -qm "Forskningsdata $(date -u +%F)"
+          git push -f origin research-data
