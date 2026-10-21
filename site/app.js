@@ -1280,6 +1280,16 @@
     if (g.s === 'weak') return { why: `${pc0(g.dd)} under toppen og svak over lang tid.`, next: 'Ikke kjøp mer før den viser styrke. Behold bare som lodd.', strength: 'Svak coin' };
     return { why: `Bare ${pc0(g.dd)} under toppen – ikke billig, ikke dyr.`, next: g.sellAt ? `Kjøp under ${price(g.buyAt)} · selg over ${price(g.sellAt)}.` : `Kjøp under ${price(g.buyAt)}.`, strength: 'Vent' };
   }
+  // ---- potensial og helse (informasjon på kortene – ikke en del av signalet, se research/plan_bt.js)
+  function healthOf(sym) { const f = fullHistory(sym), b = fullHistory('BTC'); if (!f || f.length < 460) return null; const n = f.length - 1;
+    const bm = new Map((b || []).map(r => [r.t, r.c])); const b1 = bm.get(f[n].t), b0 = bm.get(f[n - 365].t);
+    const rs = sym === 'BTC' ? null : (b1 && b0 ? (f[n].c / f[n - 365].c) / (b1 / b0) - 1 : null);
+    let v1 = 0, v0 = 0; for (let i = n - 89; i <= n; i++) v1 += f[i].v; for (let i = n - 454; i < n - 89; i++) v0 += f[i].v; const vt = v0 > 0 ? (v1 / 90) / (v0 / 365) - 1 : null;
+    let m1 = Infinity, m2 = Infinity; for (let i = n - 89; i <= n; i++) m1 = Math.min(m1, f[i].c); for (let i = n - 179; i < n - 89; i++) m2 = Math.min(m2, f[i].c);
+    const hl = m1 > m2, bad = (rs != null && rs < -0.4 ? 1 : 0) + (vt != null && vt < -0.4 ? 1 : 0) + (hl ? 0 : 1);
+    return { rs, vt, hl, score: bad === 0 ? ['Sterk', 'ai-pos'] : bad === 1 ? ['Middels', 'ai-warn'] : ['Svak', 'ai-neg'] }; }
+  function potOf(c, g) { const hz = c.analog && c.analog.ok && c.analog.hz ? c.analog.hz.find(h => h.H === 365) : null;
+    return { ath: g.ath / g.px, y1: hz && hz.n >= 8 ? { med: hz.ret.q50, lo: hz.ret.q10, hi: hz.ret.q90, n: hz.n, ne: hz.nEff } : null }; }
   function renderSimple() {
     const box = document.getElementById('ov-simple'); if (!box) return;
     if (typeof PLAN === 'undefined') { box.replaceChildren(); return; }
@@ -1296,7 +1306,11 @@
       const card = el('button', 'sg-card' + (s === OV.sel ? ' on' : '')); card.type = 'button';
       const top = el('div', 'ai-row'); top.style.flexWrap = 'nowrap'; top.style.alignItems = 'flex-start'; const nm = el('div', 'ai-stack'); nm.style.gap = '0'; nm.append(el('b', null, NAMES[s]), el('span', 'ai-muted ai-cap', `${price(g.px)} ${g.chg != null ? '· ' + pct(g.chg) + ' 24 t' : ''}`));
       top.append(nm, el('span', 'sg-badge ' + cls, lab)); const mini = el('div', 'sg-mini');
-      card.append(top, mini, el('b', 'ai-cap ' + cls + '-t', t.strength), el('p', 'ai-cap', t.why), el('p', 'ai-muted ai-cap', t.next));
+      const po = potOf(state.coins[s], g), he = healthOf(s), xs = x => '×' + nf(x, { maximumFractionDigits: x < 10 ? 1 : 0 });
+      const pot = el('div', 'sg-pot'); pot.append(el('span', null, 'Tilbake til toppen: '), el('b', null, xs(po.ath)));
+      if (po.y1) { pot.append(el('br'), el('span', null, 'Lignende situasjoner, 12 mnd: '), el('b', sgnCls(po.y1.med), pct(po.y1.med, 0))); }
+      const hp = el('p', 'ai-cap'); if (he) hp.append(el('span', 'ai-muted', 'Helse: '), el('b', he.score[1], he.score[0]));
+      card.append(top, mini, el('b', 'ai-cap ' + cls + '-t', t.strength), el('p', 'ai-cap', t.why), el('p', 'ai-muted ai-cap', t.next), pot, hp);
       card.addEventListener('click', () => { OV.sel = s; dash.setParams({ coin: s }); renderSimple(); document.getElementById('ov-detail').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
       grid.append(card); requestAnimationFrame(() => sgChart(mini, g, 730, true)); });
     head.append(grid);
@@ -1312,10 +1326,17 @@
     const kv = el('dl', 'ai-kv'); const row = (a, b2, c2) => kv.append(el('dt', null, a), el('dd', c2, b2));
     row('Signal nå', `${lab} – ${t.strength.toLowerCase()}`, cls + '-t'); row('Hvorfor', t.why); row('Neste nivå', t.next);
     row('Høyeste hittil', price(g.ath)); row('Kjøpssonen starter under', price(g.buyAt)); if (g.sellAt) row('Salgssonen starter over', price(g.sellAt));
+    const po = potOf(state.coins[OV.sel], g), he = healthOf(OV.sel);
+    row('Potensial: tilbake til toppen', `×${nf(po.ath, { maximumFractionDigits: 1 })} (${pct((po.ath - 1) * 100, 0)})`);
+    if (po.y1) row('Lignende situasjoner, 12 mnd', `median ${pct(po.y1.med, 0)} · 8 av 10 mellom ${pct(po.y1.lo, 0)} og ${pct(po.y1.hi, 0)} (${po.y1.n} tilfeller, ca. ${po.y1.ne} uavhengige)`);
+    if (he) { row('Helse', he.score[0], he.score[1]);
+      if (he.rs != null) row('· Mot Bitcoin siste år', pct(he.rs * 100, 0), he.rs < -0.4 ? 'ai-neg' : he.rs > 0 ? 'ai-pos' : null);
+      if (he.vt != null) row('· Omsetning siste 3 mnd mot året før', pct(he.vt * 100, 0), he.vt < -0.4 ? 'ai-neg' : he.vt > 0 ? 'ai-pos' : null);
+      row('· Bunner siste 6 mnd', he.hl ? 'Høyere bunn' : 'Lavere bunn', he.hl ? 'ai-pos' : 'ai-neg'); }
     const btns = el('div', 'ai-row'); btns.style.justifyContent = 'flex-start';
     const b1 = el('button', 'ai-btn', 'Se kjøps- og salgsplan →'); b1.type = 'button'; b1.addEventListener('click', () => go('plan', OV.sel));
     const b2 = el('button', 'ai-btn', 'Teknisk analyse →'); b2.type = 'button'; b2.addEventListener('click', () => go('teknisk', OV.sel)); btns.append(b1, b2);
-    det.append(dh, big, lg, el('div', 'ai-grid2'), el('p', 'ai-muted', 'Signalene er de samme reglene som i «Langsiktig plan», testet på 9 coins siden 2019: å kjøpe mer når kursen var langt under toppen ga i median 11 % lavere snittpris enn å kjøpe likt hver uke. Det fungerte godt på store coins, men dårlig på coins som aldri kom tilbake. Fargene bakover i grafen viser hva signalet var hver dag. Ikke finansiell rådgivning.'));
+    det.append(dh, big, lg, el('div', 'ai-grid2'), el('p', 'ai-muted', 'Signalene er de samme reglene som i «Langsiktig plan», testet på 9 coins siden 2019: å kjøpe mer når kursen var langt under toppen ga i median 11 % lavere snittpris enn å kjøpe likt hver uke. Det fungerte godt på store coins, men dårlig på coins som aldri kom tilbake. Fargene bakover i grafen viser hva signalet var hver dag. «Potensial» og «Helse» er informasjon, ikke en del av signalet: å slutte å kjøpe svake coins gjorde ikke planen bedre i testen (den gikk glipp av comeback som Solana i 2023), men det beskyttet mot coins som The Sandbox. Grensen på 90 % under toppen er et kompromiss. Ikke finansiell rådgivning.'));
     det.children[3].append(kv, btns);
     box.replaceChildren(head, det);
     requestAnimationFrame(() => sgChart(big, g, OV.range * 365, false));
@@ -1338,7 +1359,7 @@
     if (!mini) { svg.append('g').selectAll('line').data(ty).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
       const ya = svg.append('g').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).tickValues(ty).tickFormat(price).tickSize(0)); ya.select('.domain').remove(); axisStyle(ya);
       const xa = svg.append('g').attr('transform', `translate(0,${H - 24})`).call(d3.axisBottom(x).ticks(Math.max(2, Math.floor(W / 110))).tickSizeOuter(0)); xa.select('.domain').attr('stroke', 'var(--cds-chart-axis)'); axisStyle(xa);
-      const lv = [[g.sellAt, 'Selg over', 'var(--color-bad)'], [g.buyAt, 'Kjøp under', 'var(--color-ok)']].filter(([v]) => v && v > y.domain()[0] && v < y.domain()[1]);
+      const same = g.sellAt && Math.abs(g.buyAt / g.sellAt - 1) < 0.002; const lv = (same ? [[g.sellAt, 'Kjøp under / selg over', 'var(--color-fg-muted)']] : [[g.sellAt, 'Selg over', 'var(--color-bad)'], [g.buyAt, 'Kjøp under', 'var(--color-ok)']]).filter(([v]) => v && v > y.domain()[0] && v < y.domain()[1]);
       const ls = lv.map(([v, l, c2]) => { svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(v)).attr('y2', y(v)).attr('stroke', c2).attr('stroke-dasharray', '6 4').attr('stroke-width', 1.4); return { y: y(v) - 5, t: `${l} ${price(v)}`, c: c2 }; });
       ls.sort((a, b) => a.y - b.y); for (let i = 1; i < ls.length; i++) if (ls[i].y - ls[i - 1].y < 15) ls[i].y = ls[i - 1].y + 15;
       ls.forEach(L => svg.append('text').attr('x', m.l + 6).attr('y', L.y).attr('font-size', 'var(--cds-font-size-caption)').attr('fill', L.c).attr('paint-order', 'stroke').attr('stroke', 'var(--color-panel)').attr('stroke-width', 4).attr('stroke-linejoin', 'round').text(L.t)); }
