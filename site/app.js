@@ -146,6 +146,8 @@
     document.getElementById('g-edge').textContent = `Historikk for ${NAMES[c.sym]}: ` + [ln(b, 'Kjøpssignal', true), ln(sl, 'Salgssignal', false)].filter(Boolean).join(' ') + ' Små forskjeller fra vanlige dager betyr at signalet alene ikke gir noen tydelig fordel.';
   }
   function renderOverview() {
+    renderSimple();
+    if (!document.getElementById('ov-more').open) return;
     renderGuide();
     const box = document.getElementById('ov-cards');
     box.replaceChildren(...state.list.map(s => {
@@ -1263,6 +1265,91 @@
     box.replaceChildren(el('h2', null, `Har planen fungert før for ${NAMES[s]}?`), kv, el('h3', null, 'Samme test på 9 coins (2019–2026)'), tw,
       el('p', 'ai-cap', 'Planen fungerte godt på store coins som hentet seg inn til nye topper. På Dogecoin og The Sandbox ble den dårligere enn fast kjøp: når en coin aldri kommer tilbake, betyr «kjøp mer når den faller» at du kjøper mer av noe som taper seg. Bruk den derfor på coins du har tro på over mange år.'),
       el('p', 'ai-muted', 'Kjøpsreglene ble valgt blant tre testede varianter (fall fra toppen, prisnivå mot egen historikk og faste Mayer-grenser); fall fra toppen var klart best og stabil over ulike perioder. Startdatoene overlapper og dekker bare 1–2 markedssykluser, så tallene er usikre. Gebyr 0,1 % per kjøp og salg er tatt med.'));
+  }
+  // ------------------------------------------------------------------ enkel oversikt: KJØP / HOLD / SELG (bygger på den langsiktige planen, site/plan.js)
+  const SG = { buy: ['KJØP', 'sg-buy'], hold: ['HOLD', 'sg-hold'], sell: ['SELG', 'sg-sell'], weak: ['HOLD', 'sg-weak'] };
+  const sgOf = (dd, pct) => pct != null && pct >= 0.90 ? 'sell' : dd < -0.90 ? 'weak' : dd <= -0.20 ? 'buy' : 'hold';
+  const OV = { sel: null, range: 3 };
+  function sgNow(c) { const P = plPrep(c.sym); if (!P) return null; const n = P.N - 1, lp = livePrice(c), px = lp && lp.p ? lp.p : P.c[n];
+    const ath = Math.max(P.ath[n], px), dd = px / ath - 1, pct = P.pct[n], k = PLAN.ddMult(dd), sh = PLAN.sellShare(pct), s = sgOf(dd, pct);
+    const sellAt = P.levels[0.9]; return { P, n, px, ath, dd, pct, k, sh, s, chg: lp && lp.chg, buyAt: sellAt ? Math.min(ath * 0.8, sellAt) : ath * 0.8, sellAt }; }
+  function sgText(c, g) {
+    const pc0 = v => nf(Math.abs(v * 100), { maximumFractionDigits: 0 }) + ' %';
+    if (g.s === 'buy') return { why: `${pc0(g.dd)} under toppen – billig mot før.`, next: (g.k >= 2 ? `Kraftig kjøpssone (${nf(g.k, { maximumFractionDigits: 0 })}× vanlig beløp).` : `Kjøp mer under ${price(g.ath * (g.k >= 1 ? 0.4 : 0.6))}.`) + (g.sellAt && g.sellAt > g.px ? ` Selg over ${price(g.sellAt)}.` : ''), strength: g.k >= 2 ? 'Kraftig kjøp' : g.k >= 1 ? 'Kjøp' : 'Forsiktig kjøp' };
+    if (g.s === 'sell') return { why: `Dyr mot sin egen historikk (${Math.round(g.pct * 100)} % av tiden billigere).`, next: `Selg litt og litt – ${nf(g.sh * 100, { maximumFractionDigits: 0 })} % av beholdningen per uke.`, strength: g.sh >= 0.1 ? 'Selg mer' : 'Selg litt' };
+    if (g.s === 'weak') return { why: `${pc0(g.dd)} under toppen og svak over lang tid.`, next: 'Ikke kjøp mer før den viser styrke. Behold bare som lodd.', strength: 'Svak coin' };
+    return { why: `Bare ${pc0(g.dd)} under toppen – ikke billig, ikke dyr.`, next: g.sellAt ? `Kjøp under ${price(g.buyAt)} · selg over ${price(g.sellAt)}.` : `Kjøp under ${price(g.buyAt)}.`, strength: 'Vent' };
+  }
+  function renderSimple() {
+    const box = document.getElementById('ov-simple'); if (!box) return;
+    if (typeof PLAN === 'undefined') { box.replaceChildren(); return; }
+    const gs = state.list.map(s => [s, sgNow(state.coins[s])]);
+    if (gs.some(([, g]) => !g)) { box.replaceChildren(el('div', 'ai-card', null)); box.firstChild.append(el('h2', null, 'Kjøp, hold eller selg?'), el('p', 'ai-muted', 'Henter kurshistorikken …')); return; }
+    if (!OV.sel || !state.coins[OV.sel]) OV.sel = (dash.params().coin && state.coins[dash.params().coin]) ? dash.params().coin : state.list[0];
+    const cnt = { buy: 0, hold: 0, sell: 0, weak: 0 }; gs.forEach(([, g]) => cnt[g.s]++);
+    const head = el('div', 'ai-card');
+    const sum = [cnt.buy && `${cnt.buy} i kjøpssonen`, cnt.hold && `${cnt.hold} på hold`, cnt.sell && `${cnt.sell} i salgssonen`, cnt.weak && `${cnt.weak} svak`].filter(Boolean).join(' · ');
+    const tk = document.getElementById('ai-takeaway'); if (tk) tk.textContent = `Langsiktig signal: ${sum}.`;
+    head.append(el('h2', null, 'Kjøp, hold eller selg?'), el('p', 'ai-summary', sum + '.'), el('p', 'ai-muted', 'Langsiktig signal for hver coin, oppdatert hver dag. Kjøp når kursen er langt under toppen, selg litt og litt når den er dyr, hold ellers. Trykk på en coin for å se grafen.'));
+    const grid = el('div', 'sg-grid');
+    gs.forEach(([s, g]) => { const t = sgText(state.coins[s], g), [lab, cls] = SG[g.s];
+      const card = el('button', 'sg-card' + (s === OV.sel ? ' on' : '')); card.type = 'button';
+      const top = el('div', 'ai-row'); top.style.flexWrap = 'nowrap'; top.style.alignItems = 'flex-start'; const nm = el('div', 'ai-stack'); nm.style.gap = '0'; nm.append(el('b', null, NAMES[s]), el('span', 'ai-muted ai-cap', `${price(g.px)} ${g.chg != null ? '· ' + pct(g.chg) + ' 24 t' : ''}`));
+      top.append(nm, el('span', 'sg-badge ' + cls, lab)); const mini = el('div', 'sg-mini');
+      card.append(top, mini, el('b', 'ai-cap ' + cls + '-t', t.strength), el('p', 'ai-cap', t.why), el('p', 'ai-muted ai-cap', t.next));
+      card.addEventListener('click', () => { OV.sel = s; dash.setParams({ coin: s }); renderSimple(); document.getElementById('ov-detail').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+      grid.append(card); requestAnimationFrame(() => sgChart(mini, g, 730, true)); });
+    head.append(grid);
+    // detalj for valgt coin
+    const g = gs.find(([s]) => s === OV.sel)[1], t = sgText(state.coins[OV.sel], g), [lab, cls] = SG[g.s];
+    const det = el('div', 'ai-card'); det.id = 'ov-detail';
+    const dh = el('div', 'ai-row'), seg = el('div', 'ai-seg');
+    [[1, '1 år'], [3, '3 år'], [99, 'Alt']].forEach(([y, l]) => { const b = el('button', null, l); b.type = 'button'; b.setAttribute('aria-pressed', OV.range === y ? 'true' : 'false'); b.addEventListener('click', () => { OV.range = y; renderSimple(); }); seg.append(b); });
+    const tl = el('div', 'ai-row'); tl.style.justifyContent = 'flex-start'; tl.append(el('h2', null, NAMES[OV.sel]), el('span', 'sg-badge ' + cls, lab)); dh.append(tl, seg);
+    const big = el('div', 'sg-big');
+    const lg = el('div', 'ai-legend'); const sw = (c2, txt) => { const sp = el('span'); const i = el('i', 'sw'); i.style.background = c2; i.style.opacity = '.45'; sp.append(i, document.createTextNode(txt)); return sp; };
+    lg.append(sw('var(--color-ok)', 'Kjøp – minst 20 % under toppen og ikke dyr'), sw('var(--color-border-line)', 'Hold'), sw('var(--color-bad)', 'Selg – dyr mot egen historikk'), sw('var(--color-fg-muted)', 'Svak – over 90 % under toppen'));
+    const kv = el('dl', 'ai-kv'); const row = (a, b2, c2) => kv.append(el('dt', null, a), el('dd', c2, b2));
+    row('Signal nå', `${lab} – ${t.strength.toLowerCase()}`, cls + '-t'); row('Hvorfor', t.why); row('Neste nivå', t.next);
+    row('Høyeste hittil', price(g.ath)); row('Kjøpssonen starter under', price(g.buyAt)); if (g.sellAt) row('Salgssonen starter over', price(g.sellAt));
+    const btns = el('div', 'ai-row'); btns.style.justifyContent = 'flex-start';
+    const b1 = el('button', 'ai-btn', 'Se kjøps- og salgsplan →'); b1.type = 'button'; b1.addEventListener('click', () => go('plan', OV.sel));
+    const b2 = el('button', 'ai-btn', 'Teknisk analyse →'); b2.type = 'button'; b2.addEventListener('click', () => go('teknisk', OV.sel)); btns.append(b1, b2);
+    det.append(dh, big, lg, el('div', 'ai-grid2'), el('p', 'ai-muted', 'Signalene er de samme reglene som i «Langsiktig plan», testet på 9 coins siden 2019: å kjøpe mer når kursen var langt under toppen ga i median 11 % lavere snittpris enn å kjøpe likt hver uke. Det fungerte godt på store coins, men dårlig på coins som aldri kom tilbake. Fargene bakover i grafen viser hva signalet var hver dag. Ikke finansiell rådgivning.'));
+    det.children[3].append(kv, btns);
+    box.replaceChildren(head, det);
+    requestAnimationFrame(() => sgChart(big, g, OV.range * 365, false));
+  }
+  function sgChart(box, g, days, mini) {
+    const P = g.P, n = P.N - 1, a0 = Math.max(0, n - days), idx = d3.range(a0, n + 1);
+    const W = Math.max(mini ? 200 : 300, box.clientWidth || 300), H = mini ? 70 : (W < 600 ? 280 : 360);
+    let lo = d3.min(idx, i => P.c[i]), hi = d3.max(idx, i => P.c[i]);
+    if (!mini) { [g.buyAt, g.sellAt].forEach(v => { if (v && v < hi * 2.5 && v > lo / 2.5) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }); }
+    const logY = hi / lo > 4; const pad = logY ? 1.08 : (hi - lo) * 0.06;
+    const y = logY ? d3.scaleLog([lo / pad, hi * pad], [H - (mini ? 2 : 24), mini ? 2 : 10]) : d3.scaleLinear([lo - pad, hi + pad], [H - (mini ? 2 : 24), mini ? 2 : 10]);
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('role', 'img').attr('aria-label', `Kurs med kjøp, hold og selg${mini ? '' : ' over tid'}`);
+    const ty = mini ? [] : y.ticks(5).filter((v, i, a) => a.length <= 7 || i % 2 === 0);
+    const m = { l: mini ? 0 : measure(svg, ty.map(price)) + 10, r: mini ? 0 : 8 };
+    const x = d3.scaleUtc([P.t[a0], P.t[n]], [m.l, W - m.r]);
+    // bakgrunn: signalet hver dag
+    const col = { buy: 'var(--color-ok)', hold: 'transparent', sell: 'var(--color-bad)', weak: 'var(--color-fg-muted)' }; const runs = [];
+    for (const i of idx) { const s = P.pct[i] == null && P.dd[i] > -0.2 ? 'hold' : sgOf(P.dd[i], P.pct[i]); if (runs.length && runs[runs.length - 1].s === s) runs[runs.length - 1].b = i; else runs.push({ s, a: i, b: i }); }
+    svg.append('g').selectAll('rect').data(runs.filter(r => r.s !== 'hold')).join('rect').attr('x', r => x(P.t[r.a])).attr('width', r => Math.max(1, x(P.t[Math.min(n, r.b + 1)]) - x(P.t[r.a]))).attr('y', mini ? 0 : 10).attr('height', H - (mini ? 0 : 34)).attr('fill', r => col[r.s]).attr('fill-opacity', mini ? 0.18 : 0.14);
+    if (!mini) { svg.append('g').selectAll('line').data(ty).join('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
+      const ya = svg.append('g').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).tickValues(ty).tickFormat(price).tickSize(0)); ya.select('.domain').remove(); axisStyle(ya);
+      const xa = svg.append('g').attr('transform', `translate(0,${H - 24})`).call(d3.axisBottom(x).ticks(Math.max(2, Math.floor(W / 110))).tickSizeOuter(0)); xa.select('.domain').attr('stroke', 'var(--cds-chart-axis)'); axisStyle(xa);
+      const lv = [[g.sellAt, 'Selg over', 'var(--color-bad)'], [g.buyAt, 'Kjøp under', 'var(--color-ok)']].filter(([v]) => v && v > y.domain()[0] && v < y.domain()[1]);
+      const ls = lv.map(([v, l, c2]) => { svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(v)).attr('y2', y(v)).attr('stroke', c2).attr('stroke-dasharray', '6 4').attr('stroke-width', 1.4); return { y: y(v) - 5, t: `${l} ${price(v)}`, c: c2 }; });
+      ls.sort((a, b) => a.y - b.y); for (let i = 1; i < ls.length; i++) if (ls[i].y - ls[i - 1].y < 15) ls[i].y = ls[i - 1].y + 15;
+      ls.forEach(L => svg.append('text').attr('x', m.l + 6).attr('y', L.y).attr('font-size', 'var(--cds-font-size-caption)').attr('fill', L.c).attr('paint-order', 'stroke').attr('stroke', 'var(--color-panel)').attr('stroke-width', 4).attr('stroke-linejoin', 'round').text(L.t)); }
+    svg.append('path').datum(idx).attr('fill', 'none').attr('stroke', 'var(--color-fg)').attr('stroke-width', mini ? 1.4 : 1.8).attr('stroke-linejoin', 'round').attr('d', d3.line().x(i => x(P.t[i])).y(i => y(P.c[i])));
+    svg.append('circle').attr('cx', x(P.t[n])).attr('cy', y(P.c[n])).attr('r', mini ? 2.5 : 4).attr('fill', { buy: 'var(--color-ok)', sell: 'var(--color-bad)', hold: 'var(--color-fg)', weak: 'var(--color-fg-muted)' }[g.s]);
+    if (!mini) { const tip = tipOf(box), bis = d3.bisector(i => P.t[i]).center, dot = svg.append('circle').attr('r', 4).attr('fill', 'var(--color-fg)').attr('display', 'none');
+      svg.append('rect').attr('x', m.l).attr('y', 0).attr('width', W - m.l - m.r).attr('height', H - 24).attr('fill', 'transparent')
+        .on('pointermove', ev => { const [px2] = d3.pointer(ev); const i = idx[bis(idx, x.invert(px2))]; if (i == null) return; const s = sgOf(P.dd[i], P.pct[i]);
+          dot.attr('display', null).attr('cx', x(P.t[i])).attr('cy', y(P.c[i]));
+          tip.replaceChildren(el('div', 'd', dfmt(P.t[i])), el('div', null, `Kurs ${price(P.c[i])} · ${pct(P.dd[i] * 100, 0)} fra toppen`), el('div', SG[s][1] + '-t', `Signal: ${SG[s][0]}${s === 'weak' ? ' (svak)' : ''}`)); const kx = box.clientWidth / W; place(box, tip, x(P.t[i]) * kx, y(P.c[i]) * kx); })
+        .on('pointerleave', () => { tip.hidden = true; dot.attr('display', 'none'); }); }
   }
   // ------------------------------------------------------------------ tegning
   const RENDER = { oversikt: renderOverview, assistent: renderAssist, plan: renderPlan, daytrading: renderDay, teknisk: renderTech, historikk: renderHist, signaler: renderSignals, avansert: renderAdvanced };

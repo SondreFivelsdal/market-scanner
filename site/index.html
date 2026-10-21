@@ -159,6 +159,17 @@ details.ai-more[open] > summary { margin-bottom: var(--cds-gap-sm); }
 .ai-why:hover { color: var(--color-fg); border-color: var(--cds-chart-axis); }
 .ai-fail { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); min-height: inherit; }
 .ai-fail::before { content: ""; width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-bad); }
+.sg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: var(--cds-gap-sm); }
+.sg-card { font: inherit; color: inherit; text-align: left; cursor: pointer; display: grid; gap: 6px; align-content: start; padding: var(--cds-pad-md); border-radius: var(--cds-radius); background: var(--color-bg); border: 1px solid var(--color-border-line); min-width: 0; }
+.sg-card.on { border-color: var(--color-fg); box-shadow: inset 0 0 0 1px var(--color-fg); }
+.sg-card:focus-visible { outline: 2px solid var(--cds-chart-axis); outline-offset: 2px; }
+.sg-card p { margin: 0; }
+.sg-badge { font-weight: 700; letter-spacing: .06em; font-size: .95rem; padding: 4px 12px; border-radius: 6px; color: #fff; }
+.sg-buy { background: var(--color-ok); } .sg-sell { background: var(--color-bad); } .sg-hold { background: var(--color-fg-muted); } .sg-weak { background: transparent; color: var(--color-fg-muted); border: 1px dashed var(--color-fg-muted); }
+.sg-buy-t { color: var(--color-ok); } .sg-sell-t { color: var(--color-bad); } .sg-hold-t { color: var(--color-fg); } .sg-weak-t { color: var(--color-fg-muted); }
+.sg-mini { height: 70px; position: relative; }
+.sg-big { position: relative; min-height: 280px; touch-action: pan-y; }
+#ov-more > summary { padding: 2px 0; }
 .as-light { display: flex; gap: 14px; align-items: flex-start; padding: var(--cds-pad-md) var(--cds-pad-lg); border-radius: var(--cds-radius); border: 2px solid currentColor; }
 .as-light p { color: var(--color-fg); font-size: var(--cds-font-size-body); }
 .as-dot { flex: none; width: 22px; height: 22px; border-radius: 50%; background: currentColor; margin-top: 4px; box-shadow: 0 0 0 5px color-mix(in srgb, currentColor 20%, transparent); }
@@ -215,6 +226,10 @@ details.ai-more[open] > summary { margin-bottom: var(--cds-gap-sm); }
   </div>
 
   <section class="ai-page" id="oversikt" role="tabpanel" aria-labelledby="tab-oversikt">
+    <div class="ai-stack" id="ov-simple"></div>
+    <details class="ai-more ai-card" id="ov-more">
+      <summary>Mer detaljer: tekniske signaler og status for hver coin</summary>
+      <div class="ai-stack">
     <div class="ai-card" id="guide">
       <div class="ai-row"><div class="ai-stack" style="gap:4px"><h2>Slik leser du kjøps- og salgssignalene</h2><span class="ai-muted">WaveTrend-signaler tegnet på prisen siste 180 dager, sammen med nivåene for <b id="g-name">–</b></span></div><div class="ai-seg" id="g-coins" role="group" aria-label="Velg coin for signalgrafen"></div></div>
       <div class="ai-legend">
@@ -250,6 +265,8 @@ details.ai-more[open] > summary { margin-bottom: var(--cds-gap-sm); }
       <div class="ai-row"><h2>Slik leser du statusene</h2><span class="ai-muted">Regelbasert og forklarbar – ikke ordre eller garantier</span></div>
       <div class="ai-grid2" id="ov-legend-body"></div>
     </div>
+      </div>
+    </details>
   </section>
 
   <section class="ai-page" id="teknisk" role="tabpanel" aria-labelledby="tab-teknisk" hidden>
