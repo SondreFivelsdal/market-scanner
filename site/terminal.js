@@ -97,7 +97,7 @@
       return b; }));
   }
   function loadDays(force) { if (!force && Date.now() - T.dayAt < 5 * 6e4) return; T.dayAt = Date.now();
-    let i = 0; const L = list(), run = () => i < L.length ? loadK(L[i++], '1d', true).then(() => { drawCoins(); if (L[i - 1] === T.sym) { drawExplain(); paint(); } }).then(run) : null; run(); run(); }
+    let i = 0; const L = list(), run = () => { if (i >= L.length) return null; const s = L[i++]; return loadK(s, '1d', true).then(() => { drawCoins(); if (s === T.sym) { drawExplain(); paint(); } }).then(run); }; run(); run(); }
 
   // ---------------------------------------------------------------- graf
   const tz = t => -new Date(t).getTimezoneOffset() * 60, ts = t => Math.floor(t / 1000) + tz(t);
