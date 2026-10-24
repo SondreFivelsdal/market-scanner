@@ -24,3 +24,17 @@ Regler bestemt på forhånd (ikke tilpasset): regelscore (5 enkle regler) på 1 
 | Short | 487 | −0,09 R | −1,3 | 34 % |
 
 Konklusjon: ingen påvist fordel. Nettsiden viser dette rett under hver vurdering, og «Mulig long/short» skal leses som en oversikt over hva tidsrammene sier – ikke som et handelssignal.
+
+## EMA-linje: kjøp over, selg under (research/ema_test.js, workflow «EMA-test», resultater på grenen research-results)
+
+Signal på lukk, handel på neste lukk, 0,1 % gebyr, kontantrente (^IRX) for aksjer/fond, utbyttejustert. Kjørt 24. okt. 2026.
+
+Antall tilfeller der regelen ga høyere årlig avkastning enn å kjøpe og holde:
+
+| | EMA 50 d | EMA 200 d | EMA 21 u |
+|---|---|---|---|
+| Krypto topp 5 (BTC, ETH, BNB, XRP, SOL) | 4/5 | 3/5 | 3/5 |
+| Krypto, siste halvdel av perioden | 1/5 | 0/5 | 0/5 |
+| 28 aksjer, fond og indekser (USA + Oslo Børs) | 2/28 | 4/28 | 3/28 |
+
+Maks fall var mindre enn ved kjøp-og-hold i de fleste tilfellene. Konklusjon: regelen er en fallbeskyttelse, ikke en avkastningsmotor. Fordelen i krypto kom nesten bare fra krakket i 2018 og 2022 og har ikke holdt seg i siste halvdel.
