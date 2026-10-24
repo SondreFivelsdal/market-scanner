@@ -12,3 +12,15 @@ Hent data: kjør workflowen «Hent forskningsdata» (lagrer på grenen `research
 - Eneste som besto alle tre periodene og slo tilfeldige innganger hver gang: **LONG ved 4t-lukk over høyeste høy siste 55 × 4t, bare når dagsgrafen er over EMA50; stopp 2 ATR, glidende stopp 3 ATR**.
   Utvikling +0,41 R (n 225, t 2,4) · validering +0,16 R (n 77) · holdout +0,18 R (n 62, t 0,7; tilfeldig +0,01 R). Treff ~30 %, snitt ~2,5 døgn i handel.
 - Forbehold: holdout-utvalget er lite og ikke statistisk sikkert; perioden har vært gunstig for trendfølging; handlene varer i dager (swing, ikke daytrading).
+
+## Terminal-fanens oppsett (site/regime.js) – research/setup_bt.js
+
+Regler bestemt på forhånd (ikke tilpasset): regelscore (5 enkle regler) på 1 t, 4 t og 1 d må peke samme vei, og risiko/gevinst til nærmeste 4 t-nivå må være minst 1,5. Inngang ved neste 1 t-åpning, stopp eller mål 1, maks 30 dager, 0,1 % gebyr per side. 7 coins, nov. 2022 – okt. 2026.
+
+| | Antall | Snitt per handel | t | Treff |
+|---|---|---|---|---|
+| Alle | 936 | −0,03 R | −0,7 | 35 % |
+| Long | 449 | +0,02 R | 0,3 | 37 % |
+| Short | 487 | −0,09 R | −1,3 | 34 % |
+
+Konklusjon: ingen påvist fordel. Nettsiden viser dette rett under hver vurdering, og «Mulig long/short» skal leses som en oversikt over hva tidsrammene sier – ikke som et handelssignal.

@@ -1,13 +1,13 @@
 (() => {
   // ------------------------------------------------------------------ felles
-  const NAMES = { BTC: 'Bitcoin', XRP: 'XRP', ADA: 'Cardano', POL: 'Polygon', SAND: 'The Sandbox' };
-  const ORDER = ['BTC', 'XRP', 'ADA', 'POL', 'SAND'];
+  const NAMES = { BTC: 'Bitcoin', ETH: 'Ethereum', SOL: 'Solana', XRP: 'XRP', ADA: 'Cardano', POL: 'Polygon', SAND: 'The Sandbox' };
+  const ORDER = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'POL', 'SAND'];
   // horisonter i Historie-fanen
   const HZ = [7, 30, 90, 180, 365];
   const HZL = { 7: '1 uke', 30: '30 dager', 90: '3 måneder', 180: '6 måneder', 365: '12 måneder' };
   const HZS = { 7: '1 u', 30: '30 d', 90: '3 mnd', 180: '6 mnd', 365: '12 mnd' };
   const symList = () => { const a = ORDER.filter(s => state.coins[s]); return a.length > 1 ? a.slice(0, -1).join(', ') + ' og ' + a[a.length - 1] : a.join(''); };
-  const TABS = ['oversikt', 'assistent', 'plan', 'daytrading', 'teknisk', 'historikk', 'signaler', 'avansert'];
+  const TABS = ['terminal', 'oversikt', 'assistent', 'plan', 'daytrading', 'teknisk', 'historikk', 'signaler', 'avansert'];
   const STATUS_CLS = { buy: 'st-buy', wait: 'st-wait', sell: 'st-sell', none: 'st-none' };
   const DAY = 864e5;
   const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
@@ -51,7 +51,7 @@
     return state.full[sym];
   }
   const cur = () => { const p = dash.params(); const s = p.coin && state.coins[p.coin] ? p.coin : state.list[0]; return state.coins[s]; };
-  const tabNow = () => { const p = dash.params().tab; return TABS.includes(p) ? p : 'oversikt'; };
+  const tabNow = () => { const p = dash.params().tab; return TABS.includes(p) ? p : 'terminal'; };
   // live-pris (hentes direkte fra Binance i nettleseren av dash-shim.js); faller tilbake til siste 4t-candle
   const livePrice = c => { const L = window.__live && window.__live[c.sym]; if (L && L.p) return { p: L.p, chg: L.chg, t: L.t };
     const h = state.h4[c.sym]; if (h && h.c) return { p: h.c, chg: h.prev ? (h.c / h.prev - 1) * 100 : (c.h4 && c.h4.chg24), t: h.t + 4 * 36e5 }; return c.h4 ? { p: c.h4.price, chg: c.h4.chg24, t: c.h4.t } : { p: c.price, chg: c.chg && c.chg.d1, t: c.asOf + DAY }; };
@@ -64,7 +64,7 @@
     const tab = tabNow();
     document.querySelectorAll('#faner [data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === tab ? 'true' : 'false'));
     TABS.forEach(t => { document.getElementById(t).hidden = t !== tab; });
-    const bar = document.getElementById('coinvelger'); bar.hidden = tab === 'oversikt';
+    const bar = document.getElementById('coinvelger'); bar.hidden = tab === 'oversikt' || tab === 'terminal';
     const c = cur(); const seg = document.getElementById('coin-seg');
     seg.replaceChildren(...state.list.map(s => { const b = el('button', null, s); b.type = 'button'; b.setAttribute('aria-pressed', c && c.sym === s ? 'true' : 'false'); b.title = NAMES[s]; b.addEventListener('click', () => { state.caseIdx = null; dash.setParams({ coin: s }); }); return b; }));
     if (c) { const lp = livePrice(c); const sub = document.getElementById('coin-sub'); sub.replaceChildren(el('b', null, NAMES[c.sym] + ' ' + price(lp.p) + ' '), el('span', sgnCls(lp.chg), pct(lp.chg) + ' 24 t'), el('span', null, ' · '), pill(c.status)); }
@@ -1372,8 +1372,10 @@
           tip.replaceChildren(el('div', 'd', dfmt(P.t[i])), el('div', null, `Kurs ${price(P.c[i])} · ${pct(P.dd[i] * 100, 0)} fra toppen`), el('div', SG[s][1] + '-t', `Signal: ${SG[s][0]}${s === 'weak' ? ' (svak)' : ''}`)); const kx = box.clientWidth / W; place(box, tip, x(P.t[i]) * kx, y(P.c[i]) * kx); })
         .on('pointerleave', () => { tip.hidden = true; dot.attr('display', 'none'); }); }
   }
+  // felles tilgang for terminal.js
+  window.__ms = { NAMES, state, sgNow: c => sgNow(c), livePrice };
   // ------------------------------------------------------------------ tegning
-  const RENDER = { oversikt: renderOverview, assistent: renderAssist, plan: renderPlan, daytrading: renderDay, teknisk: renderTech, historikk: renderHist, signaler: renderSignals, avansert: renderAdvanced };
+  const RENDER = { terminal: () => { if (window.TERM) window.TERM.render(); }, oversikt: renderOverview, assistent: renderAssist, plan: renderPlan, daytrading: renderDay, teknisk: renderTech, historikk: renderHist, signaler: renderSignals, avansert: renderAdvanced };
   const MAIN = ['ov-cards', 'ta-now', 'ta-chart', 'hs-summary', 'sg-stats', 'av-body'];
   MAIN.forEach(id => document.getElementById(id).classList.add('dash-skeleton'));
   dash.onData(() => {

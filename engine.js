@@ -5,8 +5,8 @@
  */
 (function (root) {
 'use strict';
-const COINS = ['BTC', 'XRP', 'ADA', 'POL', 'SAND'];
-const NAMES = { BTC: 'Bitcoin', XRP: 'XRP', ADA: 'Cardano', POL: 'Polygon', SAND: 'The Sandbox' };
+const COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'POL', 'SAND'];
+const NAMES = { BTC: 'Bitcoin', ETH: 'Ethereum', SOL: 'Solana', XRP: 'XRP', ADA: 'Cardano', POL: 'Polygon', SAND: 'The Sandbox' };
 // horisonter (dager) for historiske estimater: 1 uke, 30 dager, 3, 6 og 12 måneder
 const HZ = [7, 30, 90, 180, 365];
 const DAY = 864e5;

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>AI Crypto Analyst</title>
-<meta name="description" content="Teknisk analyse av BTC, XRP, ADA, POL og SAND – oppdateres automatisk.">
+<meta name="description" content="Teknisk analyse av BTC, ETH, SOL, XRP, ADA, POL og SAND – oppdateres automatisk.">
 <meta name="theme-color" content="#f7f6f3" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#171716" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -49,6 +49,9 @@ p.dash-skeleton { min-height: 1.4em; }
 <script src="dash-shim.js"></script>
 <script src="daytrade.js"></script>
 <script src="plan.js"></script>
+<script src="vendor/lightweight-charts.standalone.production.js"></script>
+<script src="regime.js"></script>
+<script src="terminal.js"></script>
 </head>
 <body>
 <div id="dash-root">
@@ -199,6 +202,31 @@ details.ai-more[open] > summary { margin-bottom: var(--cds-gap-sm); }
 .dt-in { display: grid; gap: 4px; font-size: var(--cds-font-size-caption); }
 .dt-in input { font: inherit; font-size: var(--cds-font-size-body, 15px); color: var(--color-fg); background: var(--color-bg); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: 8px 10px; min-width: 0; font-variant-numeric: tabular-nums; }
 .dt-in input:focus-visible { outline: 2px solid var(--cds-chart-axis); outline-offset: 1px; }
+.tm-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: var(--cds-gap-sm); }
+.tm-kpi { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-sm) var(--cds-pad-md); display: grid; gap: 2px; min-width: 0; }
+.tm-kpi b { font-size: 1.12rem; font-variant-numeric: tabular-nums; }
+.tm-k { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.tm-src { font-size: .74rem; color: var(--color-fg-muted); overflow-wrap: anywhere; }
+.tm-table td, .tm-table th { padding: 6px 7px; }
+.tm-row { cursor: pointer; }
+.tm-row:hover td { background: var(--color-bg); }
+.tm-row:focus-visible { outline: 2px solid var(--cds-chart-axis); outline-offset: -2px; }
+.tm-table th[role="button"] { cursor: pointer; user-select: none; }
+.tm-con { display: inline-block; padding: 2px 9px; border-radius: 999px; font-weight: var(--cds-font-weight-medium); border: 1px solid currentColor; white-space: nowrap; }
+.tm-big { font-size: 1rem; padding: 4px 14px; }
+.tm-c-long { color: var(--color-ok); } .tm-c-short { color: var(--color-bad); } .tm-c-accum { color: var(--c1); }
+.tm-c-hold { color: var(--color-fg-muted); } .tm-c-avoid { color: var(--color-warn); } .tm-c-nodata { color: var(--color-fg-muted); border-style: dashed; }
+.tm-tools { display: flex; flex-wrap: wrap; gap: var(--cds-gap-sm); justify-content: space-between; }
+.tm-tools .ai-seg { overflow-x: auto; }
+.tm-inds { display: flex; flex-wrap: wrap; gap: 6px; }
+.tm-chip { font-size: var(--cds-font-size-caption); border: 1px solid var(--color-border-line); border-radius: 999px; padding: 3px 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.tm-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; min-height: 1.2em; }
+.tm-chart { height: clamp(300px, 52vh, 520px); min-width: 0; }
+.tm-subchart { height: 130px; min-width: 0; }
+.tm-list { margin: 0; padding-left: 1.1rem; display: grid; gap: 4px; }
+.tm-evidence { border-left: 3px solid var(--color-warn); padding: 4px 0 4px 12px; display: grid; gap: 4px; }
+.tm-evidence p { margin: 0; }
+.tm-rules summary { cursor: pointer; color: var(--color-fg-muted); }
 @media (max-width: 640px) { .ai-hide-sm { display: none; } .ai-card { padding: var(--cds-pad-md); } }
 </style>
 
@@ -206,12 +234,13 @@ details.ai-more[open] > summary { margin-bottom: var(--cds-gap-sm); }
   <header class="ai-head" id="topp">
     <h1>AI Crypto Analyst</h1>
     <p id="ai-takeaway" class="dash-skeleton">—</p>
-    <p class="ai-muted"><span id="ai-asof">—</span> · Teknisk analyse av Binance-kurser for Bitcoin, XRP, Cardano, Polygon og The Sandbox. Statusene er regelbaserte vurderinger, ikke kjøps- eller salgsordre. Ikke finansiell rådgivning.</p>
+    <p class="ai-muted"><span id="ai-asof">—</span> · Teknisk analyse av Binance-kurser for Bitcoin, Ethereum, Solana, XRP, Cardano, Polygon og The Sandbox. Statusene er regelbaserte vurderinger, ikke kjøps- eller salgsordre. Ikke finansiell rådgivning.</p>
     <p class="ai-muted" id="ms-updated"></p>
   </header>
 
   <nav class="ai-tabs" role="tablist" aria-label="Sider" id="faner">
-    <button role="tab" data-tab="oversikt" id="tab-oversikt">Oversikt</button>
+    <button role="tab" data-tab="terminal" id="tab-terminal">Terminal</button>
+    <button role="tab" data-tab="oversikt" id="tab-oversikt">Kjøp/hold/selg</button>
     <button role="tab" data-tab="assistent" id="tab-assistent">Trade-assistent</button>
     <button role="tab" data-tab="plan" id="tab-plan">Langsiktig plan</button>
     <button role="tab" data-tab="daytrading" id="tab-daytrading">Daytrading</button>
@@ -226,7 +255,32 @@ details.ai-more[open] > summary { margin-bottom: var(--cds-gap-sm); }
     <span class="ai-muted" id="coin-sub"></span>
   </div>
 
-  <section class="ai-page" id="oversikt" role="tabpanel" aria-labelledby="tab-oversikt">
+  <section class="ai-page" id="terminal" role="tabpanel" aria-labelledby="tab-terminal">
+    <div class="ai-stack">
+      <div class="tm-bar" id="tm-bar" aria-live="polite"></div>
+      <div class="ai-card">
+        <div class="ai-stack" style="gap:4px"><h2>Skanner</h2><span class="ai-muted">Hva sier 1 t, 4 t og 1 d for hver coin akkurat nå? Trykk på en rad for graf og analyse. «Hold / følg med» er det vanligste – og et gyldig svar.</span></div>
+        <div class="ai-stack" id="tm-scan"><p class="ai-muted">Henter …</p></div>
+      </div>
+      <div class="ai-card" id="tm-detail">
+        <div class="ai-row"><h2 id="tm-title">–</h2><span id="tm-price"></span></div>
+        <div class="tm-tools">
+          <div class="ai-seg" id="tm-tf" role="group" aria-label="Tidsramme"></div>
+          <div class="ai-seg" id="tm-subsel" role="group" aria-label="Underpanel"></div>
+        </div>
+        <div class="tm-inds" id="tm-ind"></div>
+        <div class="tm-legend" id="tm-legend"></div>
+        <div class="tm-chart" id="tm-chart"></div>
+        <span class="ai-muted" id="tm-sublabel"></span>
+        <div class="tm-subchart" id="tm-sub"></div>
+        <p class="ai-muted" id="tm-status">–</p>
+        <div class="ai-stack" id="tm-ai"></div>
+      </div>
+      <p class="ai-muted">Grafer: TradingView Lightweight Charts™ (<a href="https://www.tradingview.com/" target="_blank" rel="noopener">tradingview.com</a>, Apache 2.0). Kursdata: Binance offentlig markedsdata-API. Markedsverdi: CoinGecko. Fear &amp; Greed: alternative.me. Ikke finansiell rådgivning.</p>
+    </div>
+  </section>
+
+  <section class="ai-page" id="oversikt" role="tabpanel" aria-labelledby="tab-oversikt" hidden>
     <div class="ai-stack" id="ov-simple"></div>
     <details class="ai-more ai-card" id="ov-more">
       <summary>Mer detaljer: tekniske signaler og status for hver coin</summary>

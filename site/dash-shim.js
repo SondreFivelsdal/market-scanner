@@ -34,12 +34,12 @@
     const cur = store.meta && store.meta.data; if (!cur || m.built !== cur.built) { ['meta', 'analysis', 'candles_4h'].forEach(fetchSet); if (store.candles_1d) fetchSet('candles_1d'); if (store.backtest) fetchSet('backtest'); if (store.daytrade) fetchSet('daytrade'); } }).catch(() => {}); }, 5 * 6e4);
   // live-priser fra Binance (offentlig markedsdata-API, ingen nøkkel)
   window.__live = {};
-  const SYMS = ['BTC', 'XRP', 'ADA', 'POL', 'SAND'];
+  const SYMS = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'POL', 'SAND'];
   function live() {
     const q = encodeURIComponent(JSON.stringify(SYMS.map(s => s + 'USDT')));
     fetch('https://data-api.binance.vision/api/v3/ticker/24hr?symbols=' + q, { cache: 'no-store' }).then(r => r.json()).then(a => {
       if (!Array.isArray(a)) return; const t = Date.now();
-      a.forEach(x => { const s = x.symbol.replace(/USDT$/, ''); window.__live[s] = { p: +x.lastPrice, chg: +x.priceChangePercent, t }; });
+      a.forEach(x => { const s = x.symbol.replace(/USDT$/, ''); window.__live[s] = { p: +x.lastPrice, chg: +x.priceChangePercent, qv: +x.quoteVolume, t }; });
       liveStamp = t; showMeta(store.meta && store.meta.data); schedule();
     }).catch(() => {});
   }
