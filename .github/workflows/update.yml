@@ -55,6 +55,10 @@ jobs:
           PAGES_URL: https://sondrefivelsdal.github.io/market-scanner/
           NTFY_TOPIC: msc-6d2f0a04f4c8
           FORCE: ${{ github.event_name != 'schedule' && '1' || '0' }}
+      - name: Historiske scenarioer (spenn og lignende situasjoner)
+        if: steps.build.outputs.deploy == 'true'
+        continue-on-error: true
+        run: node scripts/history.js
       - name: Backtest av daytrading-oppsett (én gang i døgnet)
         if: steps.build.outputs.deploy == 'true'
         continue-on-error: true
