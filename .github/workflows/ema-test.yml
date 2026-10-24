@@ -1,0 +1,21 @@
+name: EMA-test (krypto, aksjer, fond)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node research/ema_test.js
+        env:
+          OUT: ema_results
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ema-results
+          path: ema_results/
