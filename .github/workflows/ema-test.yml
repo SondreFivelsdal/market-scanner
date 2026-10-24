@@ -2,7 +2,7 @@ name: EMA-test (krypto, aksjer, fond)
 on:
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -19,3 +19,12 @@ jobs:
         with:
           name: ema-results
           path: ema_results/
+      - name: Lagre resultater på grenen research-results
+        run: |
+          cp -r ema_results /tmp/ema_results
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin research-results || true
+          if git rev-parse --verify origin/research-results >/dev/null 2>&1; then git checkout -B research-results origin/research-results; else git checkout --orphan research-results; git rm -rf . >/dev/null; fi
+          mkdir -p ema && cp /tmp/ema_results/* ema/
+          git add ema && git commit -m "EMA-test $(date -u +%F)" && git push origin research-results
