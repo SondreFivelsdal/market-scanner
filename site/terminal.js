@@ -7,9 +7,9 @@
   const MS = { '15m': 9e5, '1h': 36e5, '4h': 144e5, '1d': 864e5, '1w': 6048e5 };
   const PER = { '1D': ['1 dag', '15m', 96], '1U': ['1 uke', '1h', 168], '1M': ['1 måned', '4h', 180], '3M': ['3 måneder', '1d', 92], '1Å': ['1 år', '1d', 366], '5Å': ['5 år', '1w', 262] };
   const POLL = { '15m': 15e3, '1h': 3e4, '4h': 6e4, '1d': 6e4, '1w': 3e5 };
-  const IND = { lv: ['Gulv og tak', true], vol: ['Volum', true], e50: ['50-dagerslinja', false], e20: ['20-dagerslinja', false], vwap: ['VWAP (dagssnitt)', false], bb: ['Bollinger-bånd', false], mk: ['Regelskifter (piler)', false] };
+  const IND = { lv: ['Støtte og motstand', true], tl: ['Trendlinjer', true], vol: ['Volum', true], e50: ['50-dagerslinja', false], e20: ['20-dagerslinja', false], vwap: ['VWAP (dagssnitt)', false], bb: ['Bollinger-bånd', false], mk: ['Regelskifter (piler)', false] };
   const T = { sym: null, per: '3M', sub: 'none', ind: Object.fromEntries(Object.entries(IND).map(([k, v]) => [k, v[1]])), kl: {}, glob: null, fng: null, built: false, chart: null, timer: null, dayAt: 0 };
-  try { const s = JSON.parse(localStorage.getItem('ms-term2') || '{}'); if (s.per && PER[s.per]) T.per = s.per; if (s.sub) T.sub = s.sub; if (s.ind) Object.assign(T.ind, s.ind); } catch (e) { /* ingen lagring */ }
+  try { const s = JSON.parse(localStorage.getItem('ms-term2') || '{}'); if (s.ind && s.ind.tl == null) s.ind.tl = true; if (s.per && PER[s.per]) T.per = s.per; if (s.sub) T.sub = s.sub; if (s.ind) Object.assign(T.ind, s.ind); } catch (e) { /* ingen lagring */ }
   const save = () => { try { localStorage.setItem('ms-term2', JSON.stringify({ per: T.per, sub: T.sub, ind: T.ind })); } catch (e) { /* ignorer */ } };
 
   // ---------------------------------------------------------------- hjelpere
@@ -49,6 +49,20 @@
   }
   const closedEnd = B => { let e = B.length - 1; while (e >= 0 && B[e].ct > Date.now()) e--; return e; };
 
+  // ---------------------------------------------------------------- støtte og motstand: opptil 3 nivåer hver vei, med avstand mellom
+  // Nivåene er svingpunkter (der kursen har snudd før), samlet til soner. Neste nivå må ligge et stykke unna det forrige,
+  // og innenfor hvert steg velges nivået med flest berøringer. Nivå 2 og 3 er «neste mål» hvis kursen bryter gjennom nivå 1.
+  function srLevels(B, e, px, tf) {
+    if (e < 30) return { sup: [], res: [] }; const S = B.slice(0, e + 1), A = RG.atr(S)[e] || px * 0.02;
+    const lv = RG.levels(S, e, A, tf === '1w' ? 2 : 3, tf === '1d' ? 900 : tf === '1w' ? 480 : 480);
+    const gap = Math.max(1.2 * A, px * ({ '15m': 0.006, '1h': 0.012, '4h': 0.02, '1d': 0.03, '1w': 0.06 }[tf] || 0.03));
+    const pick = (arr, dir) => { const out = []; let ref = px, first = true;
+      while (out.length < 3) { const c = arr.filter(l => dir * (l.p - ref) >= (first ? 0 : gap)); if (!c.length) break; first = false;
+        const w = c.filter(l => Math.abs(l.p - c[0].p) <= gap); const best = w.reduce((a, b) => b.n > a.n ? b : a, w[0]); out.push(best); ref = best.p; }
+      return out; };
+    return { sup: pick(lv.filter(l => l.p < px).sort((a, b) => b.p - a.p), -1), res: pick(lv.filter(l => l.p > px).sort((a, b) => a.p - b.p), 1), A };
+  }
+
   // ---------------------------------------------------------------- trend fra 200-dagerslinja (dagslukk)
   function trend(sym) {
     const c = T.kl[key(sym, '1d')]; if (!c || !c.B || c.B.length < 220) return null;
@@ -58,9 +72,9 @@
     const back = n => e - n >= 0 ? px / cl[e - n] - 1 : null; // fra lukk for n dager siden
     const H = hist(), hn = H && H.coins && H.coins[sym] ? H.coins[sym].now : null;
     const ath = hn ? Math.max(hn.ath, px) : null, athT = hn ? (px > hn.ath ? Date.now() : hn.athT) : null;
-    const lv = RG.levels(B.slice(0, e + 1), e, RG.atr(B.slice(0, e + 1))[e], 3, 300);
-    const floor = lv.filter(l => l.p < px).sort((a, b) => b.p - a.p)[0], roof = lv.filter(l => l.p > px).sort((a, b) => a.p - b.p)[0];
-    return { px, e200: E[e], e50: E50[e], above, side, near, d200: px / E[e] - 1, r7: back(7), r30: back(30), ath, athT, dd: ath ? px / ath - 1 : null, floor: floor && floor.p, roof: roof && roof.p, closeT: B[e].t };
+    const SR = srLevels(B, e, px, '1d'), floor = SR.sup[0], roof = SR.res[0];
+    const TL = RG.trendlines(B, e, { look: 180 });
+    return { sr: SR, tl: TL, px, e200: E[e], e50: E50[e], above, side, near, d200: px / E[e] - 1, r7: back(7), r30: back(30), ath, athT, dd: ath ? px / ath - 1 : null, floor: floor && floor.p, roof: roof && roof.p, closeT: B[e].t };
   }
   const TR = (t, err) => !t ? (err ? ['Data mangler', 'muted'] : ['Henter …', '']) : t.near ? ['Ved trendlinja', 'warn'] : t.above ? ['▲ Opptrend', 'up'] : ['▼ Nedtrend', 'down'];
 
@@ -112,11 +126,14 @@
     const S = { candle: ch.addCandlestickSeries({ upColor: up, downColor: dn, wickUpColor: up, wickDownColor: dn, borderVisible: false }),
       vol: ch.addHistogramSeries({ priceScaleId: 'vol', priceFormat: { type: 'volume' }, lastValueVisible: false, priceLineVisible: false }),
       e200: ln(css('--orange'), 3), e50: ln(css('--blue'), 2), e20: ln(css('--purple'), 1), vwap: ln(css('--axis'), 1, 2), bbU: ln(css('--axis'), 1), bbL: ln(css('--axis'), 1),
+      tlUp: ln(up, 2), tlDn: ln(dn, 2),
       o1: sc.addLineSeries({ color: css('--blue'), lineWidth: 1, priceLineVisible: false }), o2: sc.addLineSeries({ color: css('--purple'), lineWidth: 1, priceLineVisible: false, lastValueVisible: false }), oh: sc.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false }) };
     ch.priceScale('vol').applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
     let lock = false; const sync = (a, b) => a.timeScale().subscribeVisibleLogicalRangeChange(r => { if (lock || !r) return; lock = true; b.timeScale().setVisibleLogicalRange(r); lock = false; }); sync(ch, sc); sync(sc, ch);
     ch.subscribeCrosshairMove(p => { const C = T.chart; if (!C || !C.B) return; const b = p && p.time != null ? C.byT.get(p.time) : null; hover(b || C.B[C.B.length - 1], !b); });
-    return { ch, sc, S, lines: [], osc: [], k: null, B: null, byT: new Map() };
+    const host = document.getElementById('tm-chart'); host.style.position = 'relative'; const layer = el('div', 'zlayer'); host.append(layer);
+    ch.timeScale().subscribeVisibleLogicalRangeChange(() => requestAnimationFrame(placeZones)); if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(placeZones)).observe(host);
+    return { ch, sc, S, lines: [], osc: [], k: null, B: null, byT: new Map(), layer, zones: [] };
   }
   function hover(b, last) { const box = document.getElementById('tm-hover'); if (!box || !b) return; const tf = PER[T.per][1];
     const when = tf === '1d' ? dmy(b.t) : tf === '1w' ? 'Uke fra ' + dmy(b.t) : new Date(b.t).toLocaleString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -139,7 +156,20 @@
     if (!isD && tf !== '1w' && tr && T.ind.e50) pl(tr.e50, css('--blue'), '50-dagerslinja', 0, 1);
     C.S.vwap.setData(T.ind.vwap && MS[tf] < MS['1d'] ? line(B, RG.vwap(B)) : []);
     const bb = T.ind.bb ? RG.boll(cl) : null; C.S.bbU.setData(bb ? line(B, bb.up) : []); C.S.bbL.setData(bb ? line(B, bb.lo) : []);
-    if (T.ind.lv && tr) { pl(tr.floor, up, 'gulv (støtte)'); pl(tr.roof, dn, 'tak (motstand)'); }
+    // støtte/motstand som soner, regnet på tidsrammen som vises (bare lukkede candles)
+    const e = closedEnd(B), A = RG.atr(B.slice(0, e + 1))[e] || B[e].c * 0.02, pxNow = B[B.length - 1].c; C.zones = [];
+    if (T.ind.lv && e > 30) { const SR = srLevels(B, e, pxNow, tf), half = Math.max(0.25 * A, pxNow * 0.003), below = SR.sup, above = SR.res;
+      const strength = n => n >= 3 ? `sterk (${n} berøringer)` : n === 2 ? '2 berøringer' : '1 berøring';
+      below.forEach((l, i) => { C.zones.push({ lo: l.p - half, hi: l.p + half, p: l.p, kind: 'up', short: `Støtte ${i + 1}`, label: `Støtte ${i + 1}${i ? ' – neste mål ned' : ''} · ${strength(l.n)}` }); C.lines.push(C.S.candle.createPriceLine({ price: l.p, color: up, lineWidth: 1, lineVisible: false, axisLabelVisible: true, title: '' })); });
+      above.forEach((l, i) => { C.zones.push({ lo: l.p - half, hi: l.p + half, p: l.p, kind: 'down', short: `Motstand ${i + 1}`, label: `Motstand ${i + 1}${i ? ' – neste mål opp' : ''} · ${strength(l.n)}` }); C.lines.push(C.S.candle.createPriceLine({ price: l.p, color: dn, lineWidth: 1, lineVisible: false, axisLabelVisible: true, title: '' })); }); }
+    // trendlinjer
+    const TLv = T.ind.tl && e > 40 ? RG.trendlines(B, e, { look: Math.min(250, Math.max(show, 120)), k: tf === '1w' ? 3 : 4 }) : { up: null, down: null }; C.tl = TLv;
+    const tlData = x => x ? x.pts.map(p => ({ time: ts(p.t), value: p.v })) : [];
+    C.S.tlUp.setData(tlData(TLv.up)); C.S.tlDn.setData(tlData(TLv.down));
+    const inc = [...C.zones.filter(z => z.kind === 'up').slice(0, 2), ...C.zones.filter(z => z.kind === 'down').slice(0, 2)];
+    C.S.candle.applyOptions({ autoscaleInfoProvider: orig => { const r = orig(); if (!r || !r.priceRange || !inc.length) return r;
+      return { priceRange: { minValue: Math.min(r.priceRange.minValue, ...inc.map(z => z.lo)), maxValue: Math.max(r.priceRange.maxValue, ...inc.map(z => z.hi)) }, margins: r.margins }; } });
+    requestAnimationFrame(placeZones);
     // ekstra panel
     const sub = document.getElementById('tm-sub'); sub.hidden = T.sub === 'none'; (C.osc || []).forEach(l => C.S.o1.removePriceLine(l)); C.osc = [];
     const oscL = lv => { C.osc = lv.map(v => C.S.o1.createPriceLine({ price: v, color: css('--axis'), lineWidth: 1, lineStyle: 2, axisLabelVisible: false })); };
@@ -151,6 +181,9 @@
     if (C.k !== k) { const n = B.length; C.ch.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - show), to: n + 2 }); }
     C.k = k; C.B = B; hover(B[B.length - 1], true); legend(tf);
   }
+  function placeZones() { const C = T.chart; if (!C || !C.layer) return; const w = C.ch.timeScale().width();
+    C.layer.replaceChildren(...C.zones.map(z => { const y1 = C.S.candle.priceToCoordinate(z.hi), y2 = C.S.candle.priceToCoordinate(z.lo); if (y1 == null || y2 == null) return null;
+      const d = el('div', 'zone ' + z.kind); d.style.top = Math.min(y1, y2) + 'px'; d.style.height = Math.max(3, Math.abs(y2 - y1)) + 'px'; d.style.width = w + 'px'; d.append(el('span', null, w < 520 ? z.short : z.label)); return d; }).filter(Boolean)); }
   function markers(B) { const s = RG.biasSeries(B, closedEnd(B)), out = []; let prev = null;
     for (const x of s) { if (x.b !== prev && prev != null && x.b !== 'neutral') out.push({ time: ts(x.t), position: x.b === 'long' ? 'belowBar' : 'aboveBar', color: x.b === 'long' ? css('--up') : css('--down'), shape: x.b === 'long' ? 'arrowUp' : 'arrowDown', text: '' }); prev = x.b; }
     return out; }
@@ -158,7 +191,9 @@
     const box = document.getElementById('tm-legend'), it = (color, txt, style) => { const s = el('span'); const i = el('i'); i.style.borderTopColor = color; if (style) i.style.borderTopStyle = style; s.append(i, document.createTextNode(txt)); return s; };
     const step = { '15m': '15 minutter', '1h': 'time', '4h': '4 timer', '1d': 'dag', '1w': 'uke' }[tf];
     const a = [el('span', null, `Hvert lys er én ${step}: grønt = steg, rødt = falt`), it(css('--orange'), '200-dagerslinja – over = opptrend, under = nedtrend')];
-    if (T.ind.lv) a.push(it(css('--up'), 'Gulv: der kursen har snudd opp før', 'dashed'), it(css('--down'), 'Tak: der kursen har snudd ned før', 'dashed'));
+    const sw = (c2, txt) => { const s2 = el('span'); const b2 = el('b', 'zsw ' + c2); s2.append(b2, document.createTextNode(txt)); return s2; };
+    if (T.ind.lv) a.push(sw('up', 'Støtte: område der kursen har snudd opp før'), sw('down', 'Motstand: område der kursen har snudd ned før'));
+    if (T.ind.tl) a.push(it(css('--up'), 'Stigende trendlinje (gjennom bunner)'), it(css('--down'), 'Fallende trendlinje (gjennom topper)'));
     if (T.ind.e50) a.push(it(css('--blue'), '50-dagerslinja')); if (T.ind.e20) a.push(it(css('--purple'), '20-dagerslinja'));
     box.replaceChildren(...a);
   }
@@ -183,7 +218,13 @@
     if (t.above) out.push(point('▲', 'up', t.near ? 'Opptrend – men helt nær trendlinja' : 'Opptrend', `Kursen er ${pa(t.d200)} over 200-dagerslinja (${price(t.e200)}) og har vært over i ${days}. Lukker en dag under ${price(t.e200)}, regnes trenden som snudd ned.`));
     else out.push(point('▼', 'down', t.near ? 'Nedtrend – men helt nær trendlinja' : 'Nedtrend', `Kursen er ${pa(t.d200)} under 200-dagerslinja (${price(t.e200)}) og har vært under i ${days}. Lukker en dag over ${price(t.e200)}, regnes trenden som snudd opp.`));
     if (t.ath) out.push(point('↧', '', t.dd > -0.005 ? 'På rekordnivå' : `${pa(t.dd)} under rekorden`, t.dd > -0.005 ? `Kursen er på sitt høyeste noen gang.` : `Høyeste kurs noen gang var ${price(t.ath)} i ${my(t.athT)}. Kursen må stige ${pa(t.ath / t.px - 1)} for å nå den igjen.`));
-    out.push(point('↔', '', 'Siste tiden', `Siste uke ${pct(t.r7)}, siste måned ${pct(t.r30)}.${t.floor ? ` Nærmeste gulv er ${price(t.floor)}` : ''}${t.roof ? `${t.floor ? ', nærmeste tak' : ' Nærmeste tak er'} ${price(t.roof)}` : ''}${t.floor || t.roof ? '.' : ''}`));
+    out.push(point('↔', '', 'Siste tiden', `Siste uke ${pct(t.r7)}, siste måned ${pct(t.r30)}.`));
+    { const parts = [], R = t.sr.res, Su = t.sr.sup, lst = a => a.map(l => `${price(l.p)} (${pa(l.p / t.px - 1)} ${l.p > t.px ? 'over' : 'under'})`).join(', deretter ');
+      if (R.length) parts.push(`Motstand (der kursen har snudd ned før): ${price(R[0].p)}, ${pa(R[0].p / t.px - 1)} over dagens kurs.${R.length > 1 ? ` Bryter kursen opp gjennom den, er neste mål ${lst(R.slice(1))}.` : ''}`);
+      if (Su.length) parts.push(`Støtte (der kursen har snudd opp før): ${price(Su[0].p)}, ${pa(t.px / Su[0].p - 1)} under.${Su.length > 1 ? ` Faller kursen gjennom den, er neste støtte ${lst(Su.slice(1))}.` : ''}`);
+      const tl = t.tl || {}; if (tl.up) parts.push(`Den stigende trendlinja ligger i dag på ${price(tl.up.now)}${tl.up.dist < 0.01 ? ' – kursen er helt nede ved den nå' : ''}. Lukker kursen under den, svekkes oppgangen.`);
+      if (tl.down) parts.push(`Den fallende trendlinja ligger i dag på ${price(tl.down.now)}${tl.down.dist > -0.01 ? ' – kursen er helt oppe ved den nå' : ''}. Lukker kursen over den, kan nedgangen være brutt.`);
+      if (parts.length) { parts.push('Mål ved brudd er tommelfingerregler – kursen stopper ofte ved slike nivåer, men ikke alltid.'); out.push(point('⇅', '', 'Støtte, motstand og mål ved brudd (dagsgraf)', parts.join(' '))); } }
     const h = H && H.coins && H.coins[T.sym] && H.coins[T.sym].hz[90]; const r = h && h.range;
     if (r) { const p = document.createElement('div'); const a = el('a', null, 'Se Historiske scenarioer'); a.href = '#tab=historikk&coin=' + T.sym; a.addEventListener('click', e => { e.preventDefault(); dash.setParams({ tab: 'historikk', coin: T.sym }); window.scrollTo({ top: 0 }); });
       const pt = point('?', '', 'Hva kan skje de neste 3 månedene?', `Ut fra hvor mye ${n} svinger nå, har kursen 8 av 10 ganger havnet mellom ${price(t.px * (1 + r.lo))} og ${price(t.px * (1 + r.hi))} etter 3 måneder. Retningen kan ingen spå. `); pt.lastChild.lastChild.append(a, document.createTextNode('.')); out.push(pt); }

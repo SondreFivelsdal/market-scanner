@@ -101,6 +101,27 @@
     const risk = Math.abs(px - stop), rr = risk ? (dir * (t1 - px)) / risk : 0;
     return { dir, entry: px, stop, t1, t2, rr, t1src: tg[0] != null ? 'nærmeste ' + (dir > 0 ? 'motstand' : 'støtte') + ' (4t)' : '2 × risiko (ingen nivå funnet)', riskPct: risk / px };
   }
-  const RG = { ema, sma, rsi, macd, atr, adx, boll, vwap, levels, assess, biasSeries, gaps, conclude, plan, pctRank };
+
+  // Trendlinjer: rett linje (i log-pris) gjennom to svingbunner (stigende støtte) eller to svingtopper (fallende motstand).
+  // Linja må være intakt: ingen dagslukk mer enn «tol» på feil side fra første punkt til i dag. Velger linja med flest berøringer,
+  // og ved likt antall den nyeste. Bare lukkede candles brukes. Dette er et tegneverktøy – ikke testet som handelssignal.
+  function trendlines(B, end, opt = {}) {
+    const k = opt.k || 4, look = opt.look || 200, A = atr(B.slice(0, end + 1))[end] || B[end].c * 0.02;
+    const tol = Math.max(0.004, 0.35 * A / B[end].c), lc = B.map(b => Math.log(b.c)), lh = B.map(b => Math.log(b.h)), ll = B.map(b => Math.log(b.l));
+    const from = Math.max(k, end - look), piv = (arr, low) => { const o = []; for (let i = from; i <= end - k; i++) { let ok = true;
+      for (let j = i - k; j <= i + k && ok; j++) if (j !== i && j >= 0 && j <= end && (low ? arr[j] < arr[i] : arr[j] > arr[i])) ok = false; if (ok) o.push(i); } return o; };
+    function best(P, arr, dir) { // dir 1 = stigende støtte (under kurs), −1 = fallende motstand (over kurs)
+      let top = null; const cand = P.slice(-10);
+      for (let x = 0; x < cand.length; x++) for (let y = x + 1; y < cand.length; y++) { const a = cand[x], b = cand[y]; if (b - a < 2 * k) continue;
+        const s = (arr[b] - arr[a]) / (b - a); if (dir > 0 ? s <= 0 : s >= 0) continue; const f = i => arr[a] + s * (i - a);
+        let ok = true; for (let i = a; i <= end && ok; i++) if (dir > 0 ? lc[i] < f(i) - tol : lc[i] > f(i) + tol) ok = false; if (!ok) continue;
+        let touch = 0; for (const q of P) if (q >= a && Math.abs(arr[q] - f(q)) <= tol) touch++;
+        const sc = touch * 1000 + (b - a); if (!top || sc > top.sc) top = { a, b, s, touch, sc, f }; }
+      if (!top) return null; const pts = []; for (let i = top.a; i <= end; i++) pts.push({ i, t: B[i].t, v: Math.exp(top.f(i)) });
+      const now = Math.exp(top.f(end)); return { dir, a: top.a, b: top.b, touches: top.touch, pts, now, dist: B[end].c / now - 1, perDay: Math.exp(top.s) - 1 };
+    }
+    return { up: best(piv(ll, true), ll, 1), down: best(piv(lh, false), lh, -1) };
+  }
+  const RG = { ema, sma, rsi, macd, atr, adx, boll, vwap, levels, assess, biasSeries, gaps, conclude, plan, pctRank, trendlines };
   if (typeof module !== 'undefined' && module.exports) module.exports = RG; else root.RG = RG;
 })(typeof window !== 'undefined' ? window : globalThis);
