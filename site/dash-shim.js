@@ -1,7 +1,7 @@
 // Liten erstatning for Claude-dashbordets `dash`-API, slik at app.js kan kjøre som vanlig nettside (GitHub Pages).
 // Laster data/*.json, holder fane/coin i URL-en (#tab=…&coin=…) og henter live-priser direkte fra Binance i nettleseren.
 (() => {
-  const FILES = { meta: 'data/meta.json', history: 'data/history.json' };
+  const FILES = { meta: 'data/meta.json', history: 'data/history.json', macro: 'data/macro.json' };
   const LAZY = new Set();
   const store = {}; const subs = [];
   const bust = () => '?v=' + Math.floor(Date.now() / 6e4);
@@ -31,7 +31,7 @@
   // last data ved oppstart; sjekk etter ny analyse hvert 5. minutt
   Object.keys(FILES).filter(n => !LAZY.has(n)).forEach(fetchSet);
   setInterval(() => { fetch(FILES.meta + bust(), { cache: 'no-store' }).then(r => r.json()).then(m => {
-    const cur = store.meta && store.meta.data; if (!cur || m.built !== cur.built) ['meta', 'history'].forEach(fetchSet); }).catch(() => {}); }, 5 * 6e4);
+    const cur = store.meta && store.meta.data; if (!cur || m.built !== cur.built) ['meta', 'history', 'macro'].forEach(fetchSet); }).catch(() => {}); }, 5 * 6e4);
   // live-priser fra Binance (offentlig markedsdata-API, ingen nøkkel)
   window.__live = {};
   const SYMS = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'POL', 'SAND'];

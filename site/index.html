@@ -114,8 +114,34 @@ table.t .l { text-align: left; }
 .dots { display: inline-flex; gap: 4px; } .dots i { width: 14px; height: 14px; border-radius: 50%; background: var(--line); display: inline-block; } .dots i.on { background: var(--up); }
 @media (max-width: 640px) { .scen { grid-template-columns: 1fr; } }
 footer { font-size: .82rem; color: var(--muted); display: grid; gap: 4px; }
+.pill.big { font-size: 1.35rem; padding: 6px 18px; }
+.dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; background: var(--axis); }
+.dot.up { background: var(--up); } .dot.down { background: var(--down); } .dot.warn { background: var(--warn); }
+.mlist { display: grid; gap: 0; }
+details.mrow { border-top: 1px solid var(--line); }
+details.mrow:first-child { border-top: 0; }
+details.mrow > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: minmax(12rem, 1.3fr) minmax(10rem, 1.2fr) 132px; gap: 6px 14px; align-items: center; padding: 10px 0; }
+details.mrow > summary::-webkit-details-marker { display: none; }
+details.mrow > summary .nm { display: flex; align-items: center; gap: 10px; min-width: 0; }
+details.mrow > summary .val { font-variant-numeric: tabular-nums; }
+details.mrow > .in { padding: 0 0 14px 22px; display: grid; gap: 8px; }
+table.t.compact td.l { white-space: normal; min-width: 9rem; }
+table.t.compact td b { display: block; font-weight: 650; }
+table.t.compact .sub2 { display: block; }
+.tag { font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; }
+svg.spark { width: 132px; height: 34px; display: block; }
+svg.spark.wide { width: 100%; height: 60px; }
+ul.plain { margin: 0; padding-left: 1.2rem; display: grid; gap: 4px; }
+.lvls { display: grid; gap: 0; }
+.lvl { display: grid; grid-template-columns: 7.5rem 1fr; gap: 4px 14px; padding: 12px 0; border-top: 1px solid var(--line); }
+.lvl:first-child { border-top: 0; }
+.lvl .p { font-weight: 650; font-variant-numeric: tabular-nums; }
+.lvl .p small { display: block; font-weight: 400; color: var(--muted); font-size: .82rem; }
+.lvl .kind { font-weight: 650; }
+.lvl.now { background: var(--soft); border-radius: 8px; padding: 10px 12px; border-top: 0; margin: 4px 0; }
+.mk { display: grid; gap: 6px; cursor: pointer; text-align: left; font: inherit; color: inherit; }
 footer a { color: inherit; }
-@media (max-width: 640px) { .coin { grid-template-columns: 1fr auto; } .coin .ath { text-align: left; } .rr { grid-template-columns: 1fr; gap: 4px; } .case { grid-template-columns: 1fr; } .case .stack { text-align: left !important; } .case .res { text-align: left; } #app { padding-inline: 12px; } }
+@media (max-width: 640px) { details.mrow > summary { grid-template-columns: 1fr; gap: 2px; } details.mrow > summary .val { padding-left: 22px; font-size: .92rem; } details.mrow > summary svg.spark { display: none; } details.mrow > .in { padding-left: 0; } table.t.compact td.l { min-width: 6rem; } table.t.compact td, table.t.compact th { padding: 8px 4px; font-size: .86rem; } .card { padding: 14px; } .lvl { grid-template-columns: 1fr; } .coin { grid-template-columns: 1fr auto; } .coin .ath { text-align: left; } .rr { grid-template-columns: 1fr; gap: 4px; } .case { grid-template-columns: 1fr; } .case .stack { text-align: left !important; } .case .res { text-align: left; } #app { padding-inline: 12px; } }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
 <script src="vendor/lightweight-charts.standalone.production.js"></script>
@@ -131,6 +157,7 @@ footer a { color: inherit; }
 
   <nav class="tabs" role="tablist" aria-label="Sider" id="faner">
     <button role="tab" data-tab="terminal" id="tab-terminal">Oversikt</button>
+    <button role="tab" data-tab="makro" id="tab-makro">Makrobildet</button>
     <button role="tab" data-tab="historikk" id="tab-historikk">Historiske scenarioer</button>
   </nav>
 
@@ -153,6 +180,11 @@ footer a { color: inherit; }
       <h2 id="tm-ex-title">Hva betyr dette?</h2>
       <div class="explain" id="tm-explain"></div>
     </div>
+    <div class="card" id="tm-levels-card">
+      <div class="stack" style="gap:4px"><h2 id="tm-lv-title">Viktige nivåer – og hvorfor de betyr noe</h2>
+      <p class="muted">Fra øverst til nederst. Et nivå er viktig når mange kjøpere eller selgere har reagert der før – da ligger det ofte ordre og venter der igjen.</p></div>
+      <div class="lvls" id="tm-levels"></div>
+    </div>
     <details class="more" id="tm-adv">
       <summary>For viderekomne: flere linjer og indikatorer</summary>
       <div class="in">
@@ -161,6 +193,14 @@ footer a { color: inherit; }
         <div class="tw" id="tm-tf"></div>
       </div>
     </details>
+  </section>
+
+  <section id="makro" role="tabpanel" aria-labelledby="tab-makro" class="stack" style="gap:20px" hidden>
+    <div class="stack">
+      <h2>Makrobildet – har markedet medvind eller motvind?</h2>
+      <p class="muted">Kurser beveger seg ikke i et vakuum. Her er de store driverne for hele markedet: trenden i Bitcoin, hvor mange coins som er med, penger inn og ut, renter, dollaren og aksjemarkedet.</p>
+    </div>
+    <div class="stack" style="gap:20px" id="makro-in"><p class="muted">Henter …</p></div>
   </section>
 
   <section id="historikk" role="tabpanel" aria-labelledby="tab-historikk" class="stack" style="gap:20px" hidden>
@@ -179,12 +219,13 @@ footer a { color: inherit; }
   </section>
 
   <footer>
-    <p>Kurser: Binance. Markedsverdi: CoinGecko. Stemning: alternative.me. Grafer: TradingView Lightweight Charts™ (<a href="https://www.tradingview.com/" target="_blank" rel="noopener">tradingview.com</a>).</p>
+    <p>Kurser: Binance. Markedsverdi: CoinGecko. Stemning: alternative.me. Makro: DefiLlama, FRED, Yahoo Finance, OKX. Grafer: TradingView Lightweight Charts™ (<a href="https://www.tradingview.com/" target="_blank" rel="noopener">tradingview.com</a>).</p>
     <p>Dette er informasjon, ikke kjøps- eller salgsråd.</p>
   </footer>
 </div>
 <script src="terminal.js"></script>
 <script src="hist-ui.js"></script>
+<script src="macro-ui.js"></script>
 <script src="main.js"></script>
 </body>
 </html>

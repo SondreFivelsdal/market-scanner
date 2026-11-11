@@ -59,6 +59,12 @@ jobs:
         if: steps.build.outputs.deploy == 'true'
         continue-on-error: true
         run: node scripts/history.js
+      - name: Makrobildet (krypto, renter, dollar, aksjer, giring)
+        if: steps.build.outputs.deploy == 'true'
+        continue-on-error: true   # en feil her skal ikke stoppe oppdateringen; forrige makrobilde beholdes
+        run: node scripts/macro.js
+        env:
+          PAGES_URL: https://sondrefivelsdal.github.io/market-scanner/
       - name: Backtest av daytrading-oppsett (én gang i døgnet)
         if: steps.build.outputs.deploy == 'true'
         continue-on-error: true
