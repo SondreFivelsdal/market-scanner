@@ -22,13 +22,17 @@ function rsi(c, n = 14) { const o = new Array(c.length).fill(null); let g = 0, l
   for (let i = 1; i < c.length; i++) { const d = c[i] - c[i - 1], up = Math.max(d, 0), dn = Math.max(-d, 0);
     if (i <= n) { g += up; l += dn; if (i === n) { g /= n; l /= n; o[i] = l === 0 ? 100 : 100 - 100 / (1 + g / l); } }
     else { g = (g * (n - 1) + up) / n; l = (l * (n - 1) + dn) / n; o[i] = l === 0 ? 100 : 100 - 100 / (1 + g / l); } } return o; }
+function rv(c, n) { const o = new Array(c.length).fill(null); let s = 0, s2 = 0;
+  for (let i = 1; i < c.length; i++) { const r = Math.log(c[i] / c[i - 1]); s += r; s2 += r * r; if (i > n) { const q = Math.log(c[i - n] / c[i - n - 1]); s -= q; s2 -= q * q; } if (i > n) { const m = s / n; o[i] = Math.sqrt(Math.max(1e-10, (s2 - n * m * m) / (n - 1)) * 365); } } return o; }
 function prepCoin(sym, rows) { // rows: [{t,h,l,c}] stigende
   const t = rows.map(r => r.t), c = rows.map(r => r.c), lo = rows.map(r => r.l), N = c.length;
   const e50 = ema(c, 50), e200 = ema(c, 200), R = rsi(c), ath = new Array(N), athT = new Array(N), vol = new Array(N).fill(null);
   let m = 0, mt = 0; for (let i = 0; i < N; i++) { if (c[i] > m) { m = c[i]; mt = t[i]; } ath[i] = m; athT[i] = mt; }
   let s = 0, s2 = 0; for (let i = 1; i < N; i++) { const r = Math.log(c[i] / c[i - 1]); s += r; s2 += r * r; if (i > 90) { const q = Math.log(c[i - 90] / c[i - 91]); s -= q; s2 -= q * q; } if (i >= 91) { const mu = s / 90; vol[i] = Math.sqrt(Math.max(1e-12, (s2 - 90 * mu * mu) / 89) * 365); } }
-  const idx = new Map(t.map((x, i) => [x, i]));
-  return { sym, t, c, lo, e50, e200, R, ath, athT, vol, idx, N };
+  const idx = new Map(t.map((x, i) => [x, i])), v30 = rv(c, 30), v365 = rv(c, 365);
+  // volatilitetsanslag: snitt av kort (30 d), middels (90 d) og lang (365 d) – testet bedre enn bare 90 d (research/hist_models.js)
+  const vmix = c.map((_, i) => v30[i] != null && vol[i] != null && v365[i] != null ? Math.sqrt((v30[i] ** 2 + vol[i] ** 2 + v365[i] ** 2) / 3) : null);
+  return { sym, t, c, lo, e50, e200, R, ath, athT, vol, vmix, idx, N };
 }
 const L = Math.log;
 // Faste skalaer valgt på forhånd (typisk størrelse), ikke tilpasset mot utfall.
@@ -91,7 +95,9 @@ function analyse(coins, pool, sym, lastT, val) {
     const m = quant(rets, 0.5), cal = val && val[H] && val[H].cal; let band = null;
     if (cal && m != null) { const f = r => r == null ? null : r3((1 + m) * Math.exp(r) - 1); band = { lo: f(cal.r10), q25: f(cal.r25), mid: f(cal.r50), q75: f(cal.r75), hi: f(cal.r90) };
       const thr = Math.log(1 / (1 + m)); band.pUp = r3(valRes(val[H]).filter(x => x > thr).length / valRes(val[H]).length); }
-    let range = null; const vz = val && val[H] && val[H].calZ, bmN = quant(base, 0.5);
+    let range = null; const RZ = val && val._ranges && val._ranges[H];
+    if (RZ && P.vmix[i0]) { const sv = P.vmix[i0] * Math.sqrt(H / 365), f = z => r3(Math.exp(z * sv) - 1); range = { lo: f(RZ.z[0]), q25: f(RZ.z[1]), mid: f(RZ.z[2]), q75: f(RZ.z[3]), hi: f(RZ.z[4]), pUp: RZ.pUp, cover: RZ.perCoin[sym] || null }; }
+    const vz = null, bmN = quant(base, 0.5);
     if (vz && P.vol[i0] && bmN != null) { const sv = P.vol[i0] * Math.sqrt(H / 365), f = z => r3((1 + bmN) * Math.exp(z * sv) - 1);
       const Z = val[H]._z, thr = -Math.log(1 + bmN) / sv; range = { lo: f(vz.z10), q25: f(vz.z25), mid: f(vz.z50), q75: f(vz.z75), hi: f(vz.z90), pUp: r3(Z.filter(z => z > thr).length / Z.length) }; }
     out.hz[H] = { ok: true, kind, range, band, n: rets.length, nEff: effN(ts, H), up: up(rets), ret: Q(rets), dip: r3(quant(dips, 0.5)), dipBad: r3(quant(dips, 0.1)), meanDist: r3(sel.reduce((s, x) => s + x.d, 0) / (sel.length || 1)),
@@ -149,6 +155,43 @@ function validate(coins, pool, lastT, opts = {}) {
 }
 
 const valRes = v => v._res || [];
+// Syklus-scenario: hva gjorde coinen i samme fase etter tidligere Bitcoin-halveringer? (Bare sykluser som finnes i Binance-dataene.)
+const HALVINGS = [Date.UTC(2012, 10, 28), Date.UTC(2016, 6, 9), Date.UTC(2020, 4, 11), Date.UTC(2024, 3, 20)];
+function cycles(P, lastT) {
+  const last = HALVINGS.filter(h => h <= lastT).pop(), phase = lastT - last, out = [];
+  for (const h of HALVINGS) { if (h >= last) continue; const T = h + phase, i0 = P.idx.get(Math.floor(T / DAY) * DAY); if (i0 == null || i0 < 30) continue;
+    const path = []; for (let j = 0; j <= 365 && i0 + j < P.N; j += 3) path.push([j, r3(P.c[i0 + j] / P.c[i0])]);
+    out.push({ halving: new Date(h).getUTCFullYear(), start: P.t[i0], dd: r3(P.c[i0] / P.ath[i0] - 1), path, r90: i0 + 90 < P.N ? r3(P.c[i0 + 90] / P.c[i0] - 1) : null, r365: i0 + 365 < P.N ? r3(P.c[i0 + 365] / P.c[i0] - 1) : null }); }
+  return { phaseDays: Math.round(phase / DAY), lastHalving: new Date(last).toISOString().slice(0, 10), list: out };
+}
+// Realistisk spenn: logavkastning over H dager = z × vol × sqrt(H/365), der z-fordelingen er alle tidligere utfall for alle coins.
+// Treffrekord: samme beregning gjort bakover i tid med bare data kjent den dagen (utvidende vindu), for hver 7. dag.
+const QL = [0.1, 0.25, 0.5, 0.75, 0.9];
+function ranges(coins, lastT) {
+  const ev = []; for (const P of Object.values(coins)) for (let i = MINAGE; i < P.N; i += 3) if (P.vmix[i]) ev.push({ P, i, t: P.t[i], vf: P.vmix[i] });
+  const res = {}, TR_H = new Set([30, 90, 365]), from = Date.UTC(2020, 0, 1), recent = lastT - 3 * 365 * DAY, showFrom = lastT - 2 * 365 * DAY - 400 * DAY;
+  const ins = (a, v) => { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] < v) lo = m + 1; else hi = m; } a.splice(lo, 0, v); };
+  const qs = a => QL.map(q => quant(a, q));
+  for (const H of HZ) { const sq = Math.sqrt(H / 365);
+    const known = ev.filter(e => e.i + H < e.P.N).map(e => ({ k: e.t + H * DAY, z: Math.log(e.P.c[e.i + H] / e.P.c[e.i]) / (e.vf * sq) })).sort((a, b) => a.k - b.k);
+    const RW = +(process.env.RW || 0) * 365 * DAY; const all = known.filter(x => x.k <= lastT && (!RW || x.k > lastT - RW)).map(x => x.z).sort((a, b) => a - b);
+    res[H] = { z: qs(all).map(r3), pUp: r3(all.filter(z => z > 0).length / all.length), n: all.length, perCoin: {}, track: {} };
+    // treffrekord per fulgt coin
+    let pooled = { n: 0, hit: 0, above: 0, below: 0, rn: 0, rhit: 0 };
+    for (const sym of TRACK) { const P = coins[sym]; if (!P) continue; const z = []; let p = 0; const st = { n: 0, hit: 0, above: 0, below: 0, rn: 0, rhit: 0 }, tr = [];
+      for (let i = MINAGE; i < P.N; i += 7) { const T = P.t[i]; if (T < from || !P.vmix[i]) continue;
+        while (p < known.length && known[p].k <= T) ins(z, known[p++].z);
+        if (RW) while (z.q0 == null ? (z.q0 = 0, false) : false) {} if (RW) { while (z.r0 == null) z.r0 = 0; while (z.r0 < p && known[z.r0].k <= T - RW) { const v = known[z.r0++].z; let lo = 0, hi = z.length; while (lo < hi) { const m = (lo + hi) >> 1; if (z[m] < v) lo = m + 1; else hi = m; } z.splice(lo, 1); } }
+        if (z.length < 200) continue;
+        const q = qs(z).map(x => P.c[i] * Math.exp(x * P.vmix[i] * sq)), act = i + H < P.N ? P.c[i + H] : null;
+        if (act != null) { st.n++; const h = act >= q[0] && act <= q[4]; st.hit += h; st.above += act > q[4]; st.below += act < q[0]; if (T >= recent) { st.rn++; st.rhit += h; } }
+        if (TR_H.has(H) && T >= showFrom) tr.push([T, +P.c[i].toPrecision(5), +q[0].toPrecision(5), +q[2].toPrecision(5), +q[4].toPrecision(5), act == null ? null : +act.toPrecision(5)]); }
+      res[H].perCoin[sym] = { n: st.n, cover: st.n ? r3(st.hit / st.n) : null, above: st.n ? r3(st.above / st.n) : null, below: st.n ? r3(st.below / st.n) : null, recentN: st.rn, recent: st.rn ? r3(st.rhit / st.rn) : null };
+      if (TR_H.has(H)) res[H].track[sym] = tr; for (const k in pooled) pooled[k] += st[k]; }
+    res[H].cover = { n: pooled.n, all: r3(pooled.hit / pooled.n), above: r3(pooled.above / pooled.n), below: r3(pooled.below / pooled.n), recent: pooled.rn ? r3(pooled.rhit / pooled.rn) : null };
+  }
+  return res;
+}
 function compute(rowsBySym, opts = {}) {
   const coins = {}; for (const [s, rows] of Object.entries(rowsBySym)) if (rows && rows.length > MINAGE + 30) coins[s] = prepCoin(s, rows);
   if (!coins.BTC) throw new Error('BTC mangler');
@@ -156,7 +199,10 @@ function compute(rowsBySym, opts = {}) {
   const out = { built: new Date().toISOString(), lastT, poolCoins: Object.keys(coins), poolDays: pool.long.length, poolFrom: new Date(Math.min(...pool.long.map(c => c.t))).toISOString().slice(0, 10),
     feats: { long: FEAT.long.map(f => f[0]), short: FEAT.short.map(f => f[0]) }, names: NAMES, coins: {} };
   if (opts.validate !== false) out.validation = validate(coins, pool, lastT, opts);
-  for (const s of TRACK) if (coins[s]) out.coins[s] = analyse(coins, pool, s, lastT, out.validation);
+  out.ranges = ranges(coins, lastT);
+  const valX = Object.assign({}, out.validation); Object.defineProperty(valX, '_ranges', { value: out.ranges, enumerable: false });
+  for (const s of TRACK) if (coins[s]) { out.coins[s] = analyse(coins, pool, s, lastT, valX); out.coins[s].track = Object.fromEntries(Object.entries(out.ranges).filter(([, v]) => v.track[s]).map(([H, v]) => [H, v.track[s]])); out.coins[s].now.vmix = r3(coins[s].vmix[coins[s].N - 1]); out.coins[s].cycles = cycles(coins[s], coins[s].t[coins[s].N - 1]); }
+  for (const H in out.ranges) delete out.ranges[H].track;
   return out;
 }
 

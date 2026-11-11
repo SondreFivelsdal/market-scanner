@@ -105,6 +105,14 @@ table.t .l { text-align: left; }
 .fan { min-width: 0; position: relative; }
 .fan svg { display: block; width: 100%; height: auto; }
 .tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: .85rem; box-shadow: 0 6px 24px rgba(0,0,0,.12); white-space: nowrap; }
+.scen { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.sc { border-radius: var(--r); padding: 12px 14px; display: grid; gap: 2px; background: var(--soft); min-width: 0; }
+.sc.bad { background: var(--down-bg); } .sc.good { background: var(--up-bg); }
+.sc .k { font-size: .85rem; color: var(--muted); } .sc .v { font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; } .sc .p { font-size: .92rem; font-weight: 600; }
+.big { font-size: 1.15rem; line-height: 1.45; }
+.trust { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.dots { display: inline-flex; gap: 4px; } .dots i { width: 14px; height: 14px; border-radius: 50%; background: var(--line); display: inline-block; } .dots i.on { background: var(--up); }
+@media (max-width: 640px) { .scen { grid-template-columns: 1fr; } }
 footer { font-size: .82rem; color: var(--muted); display: grid; gap: 4px; }
 footer a { color: inherit; }
 @media (max-width: 640px) { .coin { grid-template-columns: 1fr auto; } .coin .ath { text-align: left; } .rr { grid-template-columns: 1fr; gap: 4px; } .case { grid-template-columns: 1fr; } .case .stack { text-align: left !important; } .case .res { text-align: left; } #app { padding-inline: 12px; } }
@@ -157,13 +165,17 @@ footer a { color: inherit; }
 
   <section id="historikk" role="tabpanel" aria-labelledby="tab-historikk" class="stack" style="gap:20px" hidden>
     <div class="stack">
-      <h2>Hva kan skje videre?</h2>
-      <p class="muted">Basert på hvordan store coins har beveget seg tidligere. Ingen kan vite hva som skjer – dette viser hvor stort spennet realistisk er.</p>
+      <h2>Hvor kan kursen være om en stund?</h2>
+      <p class="muted">Ingen kan vite det. Men vi kan si hvor stort spennet realistisk er – og sjekke hvor ofte et slikt spenn har stemt før.</p>
     </div>
-    <div class="seg" id="hs-coins" role="group" aria-label="Velg coin"></div>
+    <div class="stack" style="gap:10px">
+      <div class="seg" id="hs-coins" role="group" aria-label="Velg coin"></div>
+      <div class="seg" id="hs-hz" role="group" aria-label="Velg tidsrom"></div>
+    </div>
     <div class="card" id="hs-main"><p class="muted">Henter …</p></div>
-    <div class="card" id="hs-similar"></div>
-    <details class="more" id="hs-how"><summary>Hvordan er dette regnet ut, og hvor godt har det stemt?</summary><div class="in" id="hs-how-in"></div></details>
+    <div class="card" id="hs-track"></div>
+    <details class="more" id="hs-sim"><summary>Eksempler: hva skjedde i lignende situasjoner før?</summary><div class="in" id="hs-similar"></div></details>
+    <details class="more" id="hs-how"><summary>Hvordan er dette regnet ut?</summary><div class="in" id="hs-how-in"></div></details>
   </section>
 
   <footer>

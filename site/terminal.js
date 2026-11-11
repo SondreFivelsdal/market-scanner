@@ -90,9 +90,12 @@
   const FNG = { 'Extreme Fear': ['Ekstrem frykt', 'down'], Fear: ['Frykt', 'down'], Neutral: ['Nøytral', ''], Greed: ['Grådighet', 'up'], 'Extreme Greed': ['Ekstrem grådighet', 'up'] };
   function kpi(k, v, vc, s) { const d = el('div', 'kpi'); d.append(el('span', 'k', k), el('span', 'v ' + (vc || ''), v), el('span', 's', s)); return d; }
   function drawBar() {
-    const box = document.getElementById('tm-bar'); if (!box) return; const out = [], b = live('BTC');
-    out.push(b && b.p ? kpi('Bitcoin', price(b.p), '', `${pct(b.chg / 100)} siste døgn`) : kpi('Bitcoin', 'Ikke tilgjengelig', 'muted', 'Binance svarer ikke akkurat nå'));
-    const g = T.glob; out.push(g && g.mcap ? kpi('Hele kryptomarkedet', big(g.mcap), '', `${pct(g.chg)} siste døgn · Bitcoin er ${nf(g.btcD, { maximumFractionDigits: 0 })} % av markedet`) : kpi('Hele kryptomarkedet', g && g.err ? 'Ikke tilgjengelig' : 'Henter …', 'muted', g && g.err ? 'CoinGecko svarer ikke akkurat nå' : ''));
+    const box = document.getElementById('tm-bar'); if (!box) return; const out = [], sym = T.sym || 'BTC', b = live(sym), nm = names()[sym] || sym, btc = live('BTC');
+    // første kort følger coinen som er valgt i lista; Bitcoin vises da i markedskortet
+    const t = trend(sym), [lab] = TR(t), sub2 = [`${b && b.chg != null ? pct(b.chg / 100) : '–'} siste døgn`]; if (t) sub2.push(lab.replace(/^[▲▼] /, '').toLowerCase()); if (t && t.dd != null && t.dd < -0.005) sub2.push(`${pct0(t.dd)} fra toppen`);
+    out.push(b && b.p ? kpi(`${nm} (valgt)`, price(b.p), '', sub2.join(' · ')) : kpi(nm, 'Ikke tilgjengelig', 'muted', 'Binance svarer ikke akkurat nå'));
+    const btcTxt = sym !== 'BTC' && btc && btc.p ? `Bitcoin ${price(btc.p)} (${pct(btc.chg / 100)}) · ` : '';
+    const g = T.glob; out.push(g && g.mcap ? kpi('Hele kryptomarkedet', big(g.mcap), '', `${pct(g.chg)} siste døgn · ${btcTxt}Bitcoin er ${nf(g.btcD, { maximumFractionDigits: 0 })} % av markedet`) : kpi('Hele kryptomarkedet', g && g.err ? 'Ikke tilgjengelig' : 'Henter …', 'muted', g && g.err ? 'CoinGecko svarer ikke akkurat nå' : ''));
     const f = T.fng; if (f && f.v != null) { const [w, c] = FNG[f.cls] || [f.cls, '']; out.push(kpi('Stemningen i markedet', `${w} (${f.v})`, c, `Skala 0–100: lavt = folk er redde, høyt = folk er grådige${f.prev != null ? ` · i går ${f.prev}` : ''}`)); }
     else out.push(kpi('Stemningen i markedet', f && f.err ? 'Ikke tilgjengelig' : 'Henter …', 'muted', f && f.err ? 'alternative.me svarer ikke' : ''));
     box.replaceChildren(...out);
@@ -107,7 +110,7 @@
       const px = el('span', 'px'); px.append(document.createTextNode(L && L.p ? price(L.p) + ' ' : 'Ikke tilgjengelig '), el('span', cls(L && L.chg) + ' small', L && L.chg != null ? pct(L.chg / 100) : ''));
       const ath = el('span', 'ath', t && t.dd != null ? (t.dd > -0.005 ? 'På rekordnivå' : `${pct0(t.dd)} fra toppen`) : '');
       b.append(nm, px, el('span', 'pill ' + c, lab), ath);
-      b.addEventListener('click', () => { T.sym = s; dash.setParams({ coin: s }); drawCoins(); drawDetail(true); const d = document.getElementById('tm-detail'); if (d.getBoundingClientRect().top > window.innerHeight * 0.5) d.scrollIntoView({ behavior: 'smooth' }); });
+      b.addEventListener('click', () => { T.sym = s; dash.setParams({ coin: s }); drawCoins(); drawBar(); drawDetail(true); const d = document.getElementById('tm-detail'); if (d.getBoundingClientRect().top > window.innerHeight * 0.5) d.scrollIntoView({ behavior: 'smooth' }); });
       return b; }));
   }
   function loadDays(force) { if (!force && Date.now() - T.dayAt < 5 * 6e4) return; T.dayAt = Date.now();
@@ -227,7 +230,7 @@
       if (parts.length) { parts.push('Mål ved brudd er tommelfingerregler – kursen stopper ofte ved slike nivåer, men ikke alltid.'); out.push(point('⇅', '', 'Støtte, motstand og mål ved brudd (dagsgraf)', parts.join(' '))); } }
     const h = H && H.coins && H.coins[T.sym] && H.coins[T.sym].hz[90]; const r = h && h.range;
     if (r) { const p = document.createElement('div'); const a = el('a', null, 'Se Historiske scenarioer'); a.href = '#tab=historikk&coin=' + T.sym; a.addEventListener('click', e => { e.preventDefault(); dash.setParams({ tab: 'historikk', coin: T.sym }); window.scrollTo({ top: 0 }); });
-      const pt = point('?', '', 'Hva kan skje de neste 3 månedene?', `Ut fra hvor mye ${n} svinger nå, har kursen 8 av 10 ganger havnet mellom ${price(t.px * (1 + r.lo))} og ${price(t.px * (1 + r.hi))} etter 3 måneder. Retningen kan ingen spå. `); pt.lastChild.lastChild.append(a, document.createTextNode('.')); out.push(pt); }
+      const pt = point('?', '', 'Hva kan skje de neste 3 månedene?', `Trolig mellom ${price(t.px * (1 + r.lo))} og ${price(t.px * (1 + r.hi))}${r.cover && r.cover.n ? ` – et slikt spenn har stemt ${nf(r.cover.cover * 10, { maximumFractionDigits: 0 })} av 10 ganger før for ${n}` : ''}. Om det går opp eller ned, kan ingen spå. `); pt.lastChild.lastChild.append(a, document.createTextNode('.')); out.push(pt); }
     else out.push(point('?', '', 'Hva kan skje videre?', 'Beregningen er ikke tilgjengelig akkurat nå.'));
     out.push(el('div', 'note', 'Dette er ikke kjøps- eller salgsråd. Å følge 200-dagerslinja har tidligere gitt mindre store fall, men ikke mer avkastning enn å bare eie coinen (testet på 2018–2026).'));
     box.replaceChildren(...out);
