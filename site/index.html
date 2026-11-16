@@ -43,8 +43,8 @@ p { margin: 0; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; display: grid; gap: 14px; min-width: 0; }
 .row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
 .stack { display: grid; gap: 6px; min-width: 0; }
-.tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; background: var(--bg); padding-top: 4px; }
-.tabs button { font: inherit; font-size: 1rem; background: none; border: 0; border-bottom: 3px solid transparent; color: var(--muted); padding: 12px 14px; cursor: pointer; }
+.tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; background: var(--bg); padding-top: 4px; }
+.tabs button { white-space: nowrap; flex: 0 0 auto; font: inherit; font-size: 1rem; background: none; border: 0; border-bottom: 3px solid transparent; color: var(--muted); padding: 12px 14px; cursor: pointer; }
 .tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--fg); font-weight: 650; }
 button:focus-visible, [tabindex]:focus-visible, summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .seg { display: inline-flex; flex-wrap: wrap; gap: 6px; }
@@ -140,6 +140,21 @@ ul.plain { margin: 0; padding-left: 1.2rem; display: grid; gap: 4px; }
 .lvl .kind { font-weight: 650; }
 .lvl.now { background: var(--soft); border-radius: 8px; padding: 10px 12px; border-top: 0; margin: 4px 0; }
 .mk { display: grid; gap: 6px; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.evsearch { font: inherit; font-size: 1.05rem; width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--fg); }
+.evsearch:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+.evsugg { display: grid; gap: 4px; }
+.evsugg:empty { display: none; }
+.evopt { font: inherit; text-align: left; background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; cursor: pointer; color: var(--fg); }
+.evopt:hover, .evopt:focus-visible { border-color: var(--blue); }
+.chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+button.chip { font: inherit; font-size: .9rem; background: var(--panel); color: var(--fg); }
+.evnow { border-left: 4px solid var(--blue); background: color-mix(in srgb, var(--blue) 10%, transparent); padding: 10px 14px; border-radius: 0 var(--r) var(--r) 0; display: grid; gap: 4px; }
+.evchart { position: relative; min-width: 0; }
+.evctl { display: flex; flex-wrap: wrap; gap: 14px 28px; }
+.evchart svg { display: block; width: 100%; height: auto; touch-action: pan-y; }
+.evchart .ax { font-size: 12px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.evchart .tip { display: grid; gap: 2px; }
+tr.evrow { cursor: pointer; } tr.evrow:hover td { background: var(--soft); } tr.evrow.on td { background: color-mix(in srgb, var(--blue) 14%, transparent); } tr.evrow.cur td { background: color-mix(in srgb, var(--blue) 8%, transparent); cursor: default; }
 footer a { color: inherit; }
 @media (max-width: 640px) { details.mrow > summary { grid-template-columns: 1fr; gap: 2px; } details.mrow > summary .val { padding-left: 22px; font-size: .92rem; } details.mrow > summary svg.spark { display: none; } details.mrow > .in { padding-left: 0; } table.t.compact td.l { min-width: 6rem; } table.t.compact td, table.t.compact th { padding: 8px 4px; font-size: .86rem; } .card { padding: 14px; } .lvl { grid-template-columns: 1fr; } .coin { grid-template-columns: 1fr auto; } .coin .ath { text-align: left; } .rr { grid-template-columns: 1fr; gap: 4px; } .case { grid-template-columns: 1fr; } .case .stack { text-align: left !important; } .case .res { text-align: left; } #app { padding-inline: 12px; } }
 </style>
@@ -158,6 +173,8 @@ footer a { color: inherit; }
   <nav class="tabs" role="tablist" aria-label="Sider" id="faner">
     <button role="tab" data-tab="terminal" id="tab-terminal">Oversikt</button>
     <button role="tab" data-tab="makro" id="tab-makro">Makrobildet</button>
+    <button role="tab" data-tab="syklus" id="tab-syklus">Syklus</button>
+    <button role="tab" data-tab="hendelser" id="tab-hendelser">Hva skjedde etter?</button>
     <button role="tab" data-tab="historikk" id="tab-historikk">Historiske scenarioer</button>
   </nav>
 
@@ -203,6 +220,22 @@ footer a { color: inherit; }
     <div class="stack" style="gap:20px" id="makro-in"><p class="muted">Henter …</p></div>
   </section>
 
+  <section id="syklus" role="tabpanel" aria-labelledby="tab-syklus" class="stack" style="gap:20px" hidden>
+    <div class="stack">
+      <h2>Syklus – hvor i syklusen er Bitcoin?</h2>
+      <p class="muted">200- og 50-ukerslinja, realisert pris, MVRV-Z, risiko, penger inn og ut av børser, sosial interesse og Bitcoin målt mot aksjer, gull og olje – sammenlignet med tidligere topper og bunner.</p>
+    </div>
+    <div class="stack" style="gap:20px" id="syklus-in"><p class="muted">Henter …</p></div>
+  </section>
+
+  <section id="hendelser" role="tabpanel" aria-labelledby="tab-hendelser" class="stack" style="gap:20px" hidden>
+    <div class="stack">
+      <h2>Hva skjedde etter …?</h2>
+      <p class="muted">Søk på en hendelse – en renteheving, et midtvalg, et brudd under 200-ukerslinja, en krig – og se hva som skjedde med kursen etter hver gang det har skjedd før.</p>
+    </div>
+    <div class="stack" style="gap:20px" id="hendelser-in"><p class="muted">Henter …</p></div>
+  </section>
+
   <section id="historikk" role="tabpanel" aria-labelledby="tab-historikk" class="stack" style="gap:20px" hidden>
     <div class="stack">
       <h2>Hvor kan kursen være om en stund?</h2>
@@ -219,13 +252,15 @@ footer a { color: inherit; }
   </section>
 
   <footer>
-    <p>Kurser: Binance. Markedsverdi: CoinGecko. Stemning: alternative.me. Makro: DefiLlama, FRED, Yahoo Finance, OKX. Grafer: TradingView Lightweight Charts™ (<a href="https://www.tradingview.com/" target="_blank" rel="noopener">tradingview.com</a>).</p>
+    <p>Kurser: Binance. Markedsverdi: CoinGecko. Stemning: alternative.me. Makro: DefiLlama, FRED, Yahoo Finance, OKX. On-chain: Coin Metrics. Sosial interesse: Wikimedia. Grafer: TradingView Lightweight Charts™ (<a href="https://www.tradingview.com/" target="_blank" rel="noopener">tradingview.com</a>).</p>
     <p>Dette er informasjon, ikke kjøps- eller salgsråd.</p>
   </footer>
 </div>
 <script src="terminal.js"></script>
 <script src="hist-ui.js"></script>
 <script src="macro-ui.js"></script>
+<script src="events-ui.js"></script>
+<script src="cycle-ui.js"></script>
 <script src="main.js"></script>
 </body>
 </html>

@@ -65,6 +65,12 @@ jobs:
         run: node scripts/macro.js
         env:
           PAGES_URL: https://sondrefivelsdal.github.io/market-scanner/
+      - name: Hva skjedde etter? og Syklus (hendelser, lange kursserier, on-chain)
+        if: steps.build.outputs.deploy == 'true'
+        continue-on-error: true   # en feil her skal ikke stoppe oppdateringen; forrige fil beholdes
+        run: node scripts/events.js
+        env:
+          PAGES_URL: https://sondrefivelsdal.github.io/market-scanner/
       - name: Backtest av daytrading-oppsett (én gang i døgnet)
         if: steps.build.outputs.deploy == 'true'
         continue-on-error: true
