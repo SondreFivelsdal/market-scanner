@@ -7,7 +7,7 @@
   const MS = { '15m': 9e5, '1h': 36e5, '4h': 144e5, '1d': 864e5, '1w': 6048e5 };
   const PER = { '1D': ['1 dag', '15m', 96], '1U': ['1 uke', '1h', 168], '1M': ['1 måned', '4h', 180], '3M': ['3 måneder', '1d', 92], '1Å': ['1 år', '1d', 366], '5Å': ['5 år', '1w', 262] };
   const POLL = { '15m': 15e3, '1h': 3e4, '4h': 6e4, '1d': 6e4, '1w': 3e5 };
-  const IND = { lv: ['Støtte og motstand', true], tl: ['Trendlinjer', true], vol: ['Volum', true], w50: ['50-ukerslinja', true], s300: ['300-dagerslinja', false], e50: ['50-dagerslinja', false], e20: ['20-dagerslinja', false], vwap: ['VWAP (dagssnitt)', false], bb: ['Bollinger-bånd', false], mk: ['Regelskifter (piler)', false] };
+  const IND = { lv: ['Støtte og motstand', true], tl: ['Trendlinjer', true], vol: ['Volum', true], w200: ['200-ukerslinja', true], w50: ['50-ukerslinja', true], s300: ['300-dagerslinja', false], e50: ['50-dagerslinja', false], e20: ['20-dagerslinja', false], vwap: ['VWAP (dagssnitt)', false], bb: ['Bollinger-bånd', false], mk: ['Regelskifter (piler)', false] };
   const T = { sym: null, per: '3M', sub: 'none', ind: Object.fromEntries(Object.entries(IND).map(([k, v]) => [k, v[1]])), kl: {}, glob: null, fng: null, built: false, chart: null, timer: null, dayAt: 0 };
   try { const s = JSON.parse(localStorage.getItem('ms-term2') || '{}'); if (s.ind && s.ind.tl == null) s.ind.tl = true; if (s.per && PER[s.per]) T.per = s.per; if (s.sub) T.sub = s.sub; if (s.ind) Object.assign(T.ind, s.ind); } catch (e) { /* ingen lagring */ }
   const save = () => { try { localStorage.setItem('ms-term2', JSON.stringify({ per: T.per, sub: T.sub, ind: T.ind })); } catch (e) { /* ignorer */ } };
@@ -50,6 +50,10 @@
   const closedEnd = B => { let e = B.length - 1; while (e >= 0 && B[e].ct > Date.now()) e--; return e; };
   // 50-ukerslinja regnet fra dagslukk: snittet av de siste 50 fullførte ukelukkene (uke = mandag–søndag UTC). Verdien for en dag
   // er linja fra siste uke som var ferdig da dagen startet – samme som en ukegraf viser.
+  // 200-ukerslinja: snittet av de siste 200 fullførte ukelukkene (ukegraf fra Binance). Verdien for en dag er linja fra siste ferdige uke.
+  function w200of(sym) { const c = T.kl[key(sym, '1w')]; if (!c || !c.B) return null; const B = c.B, e = closedEnd(B); if (e < 199) return null;
+    const S = RG.sma(B.slice(0, e + 1).map(b => b.c), 200), byW = new Map(B.slice(0, e + 1).map((b, k) => [b.t, S[k]])), wk = t => t - ((new Date(t).getUTCDay() + 6) % 7) * 864e5;
+    return { now: S[e], at: t => { const v = byW.get(wk(t) - 7 * 864e5); return v == null ? null : v; } }; }
   function w50daily(B) { const wk = t => t - ((new Date(t).getUTCDay() + 6) % 7) * 864e5, W = [];
     B.forEach((b, i) => { const w = wk(b.t); if (!W.length || W[W.length - 1].w !== w) W.push({ w, c: b.c }); else W[W.length - 1].c = b.c; });
     const S = RG.sma(W.map(x => x.c), 50), byW = new Map(W.map((x, k) => [x.w, k]));
@@ -80,7 +84,7 @@
     const ath = hn ? Math.max(hn.ath, px) : null, athT = hn ? (px > hn.ath ? Date.now() : hn.athT) : null;
     const SR = srLevels(B, e, px, '1d'), floor = SR.sup[0], roof = SR.res[0];
     const TL = RG.trendlines(B, e, { look: 180 });
-    return { sr: SR, tl: TL, px, e200: E[e], e50: E50[e], above, side, near, d200: px / E[e] - 1, r7: back(7), r30: back(30), ath, athT, dd: ath ? px / ath - 1 : null, floor: floor && floor.p, roof: roof && roof.p, closeT: B[e].t, s300: S300[e], w50: W50[B.length - 1] };
+    return { sr: SR, tl: TL, px, e200: E[e], e50: E50[e], above, side, near, d200: px / E[e] - 1, r7: back(7), r30: back(30), ath, athT, dd: ath ? px / ath - 1 : null, floor: floor && floor.p, roof: roof && roof.p, closeT: B[e].t, s300: S300[e], w50: W50[B.length - 1], w200: (w200of(sym) || {}).now };
   }
   const TR = (t, err) => !t ? (err ? ['Data mangler', 'muted'] : ['Henter …', '']) : t.near ? ['Ved trendlinja', 'warn'] : t.above ? ['▲ Opptrend', 'up'] : ['▼ Nedtrend', 'down'];
 
@@ -138,7 +142,7 @@
     const S = { candle: ch.addCandlestickSeries({ upColor: up, downColor: dn, wickUpColor: up, wickDownColor: dn, borderVisible: false }),
       vol: ch.addHistogramSeries({ priceScaleId: 'vol', priceFormat: { type: 'volume' }, lastValueVisible: false, priceLineVisible: false }),
       e200: ln(css('--orange'), 3), e50: ln(css('--blue'), 2), e20: ln(css('--purple'), 1), vwap: ln(css('--axis'), 1, 2), bbU: ln(css('--axis'), 1), bbL: ln(css('--axis'), 1),
-      tlUp: ln(up, 2), tlDn: ln(dn, 2), w50: ch.addLineSeries({ color: css('--fg'), lineWidth: 2, lineStyle: 2, lineType: 1, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }), s300: ln(css('--orange'), 2, 1),
+      tlUp: ln(up, 2), tlDn: ln(dn, 2), w200: ch.addLineSeries({ color: '#d6336c', lineWidth: 3, lineType: 1, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }), w50: ch.addLineSeries({ color: css('--fg'), lineWidth: 2, lineStyle: 2, lineType: 1, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }), s300: ln(css('--orange'), 2, 1),
       o1: sc.addLineSeries({ color: css('--blue'), lineWidth: 1, priceLineVisible: false }), o2: sc.addLineSeries({ color: css('--purple'), lineWidth: 1, priceLineVisible: false, lastValueVisible: false }), oh: sc.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false }) };
     ch.priceScale('vol').applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
     let lock = false; const sync = (a, b) => a.timeScale().subscribeVisibleLogicalRangeChange(r => { if (lock || !r) return; lock = true; b.timeScale().setVisibleLogicalRange(r); lock = false; }); sync(ch, sc); sync(sc, ch);
@@ -166,6 +170,9 @@
     else { C.S.e200.setData([]); if (tr) pl(tr.e200, css('--orange'), '200-dagerslinja', 0, 2); }
     const isD = tf === '1d'; C.S.e50.setData(T.ind.e50 && isD ? line(B, RG.ema(cl, 50)) : []); C.S.e20.setData(T.ind.e20 && isD ? line(B, RG.ema(cl, 20)) : []);
     // 50-ukers og 300-dagers: linjer på dags- og ukegraf, vannrette streker ellers
+    { const W2 = w200of(T.sym); if (T.ind.w200 && isD && W2) C.S.w200.setData(B.map(b => { const v = W2.at(b.t); return v == null ? { time: ts(b.t) } : { time: ts(b.t), value: v }; }));
+      else if (T.ind.w200 && tf === '1w') C.S.w200.setData(line(B, RG.sma(cl, 200)));
+      else { C.S.w200.setData([]); if (T.ind.w200 && W2 && W2.now) pl(W2.now, '#d6336c', '200-ukerslinja', 0, 2); } }
     if (T.ind.w50 && isD) C.S.w50.setData(line(B, w50daily(B))); else if (T.ind.w50 && tf === '1w') C.S.w50.setData(line(B, RG.sma(cl, 50))); else { C.S.w50.setData([]); if (T.ind.w50 && tr && tr.w50) pl(tr.w50, css('--fg'), '50-ukerslinja', 2, 1); }
     if (T.ind.s300 && isD) C.S.s300.setData(line(B, RG.sma(cl, 300)));
     else if (T.ind.s300 && tf === '1w' && D && D.B) { const S3 = RG.sma(D.B.map(b => b.c), 300), m3 = new Map(D.B.map((b, i) => [b.t, S3[i]])); C.S.s300.setData(B.map(b => { let v = null; for (let d = 6; d >= 0 && v == null; d--) v = m3.get(b.t + d * 864e5); return v == null ? { time: ts(b.t) } : { time: ts(b.t), value: v }; })); }
@@ -211,6 +218,7 @@
     const sw = (c2, txt) => { const s2 = el('span'); const b2 = el('b', 'zsw ' + c2); s2.append(b2, document.createTextNode(txt)); return s2; };
     if (T.ind.lv) a.push(sw('up', 'Støtte: område der kursen har snudd opp før'), sw('down', 'Motstand: område der kursen har snudd ned før'));
     if (T.ind.tl) a.push(it(css('--up'), 'Stigende trendlinje (gjennom bunner)'), it(css('--down'), 'Fallende trendlinje (gjennom topper)'));
+    if (T.ind.w200) a.push(it('#d6336c', '200-ukerslinja – historisk gulv i bjørnemarkeder'));
     if (T.ind.w50) a.push(it(css('--fg'), '50-ukerslinja – skillet mellom bjørne- og oksemarked', 'dashed')); if (T.ind.s300) a.push(it(css('--orange'), '300-dagerslinja', 'dotted'));
     if (T.ind.e50) a.push(it(css('--blue'), '50-dagerslinja')); if (T.ind.e20) a.push(it(css('--purple'), '20-dagerslinja'));
     box.replaceChildren(...a);
@@ -262,6 +270,7 @@
     const near = (a, b) => a && b && Math.abs(a / b - 1) < 0.015, fmtD = p => `${Math.abs(p / px - 1) < 0.1 ? nf(Math.abs(p / px - 1) * 100, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' %' : pa(p / px - 1)} ${p > px ? 'over' : 'under'}`;
     const lines = [['e200', t.e200, '200-dagerslinja', 'Snittet av de siste 200 dagslukkene. Den mest brukte trendlinja i alle markeder: over = opptrend, under = nedtrend. Fordi så mange følger den, reagerer kursen ofte når den kommer hit.'],
       ['s300', t.s300, '300-dagerslinja', 'Snittet av de siste 300 dagslukkene. Ligger tregere enn 200-dagerslinja og har flere ganger vært «siste skanse» i korreksjoner i et oksemarked.'],
+      ['w200', t.w200, '200-ukerslinja', 'Snittet av de siste 200 ukelukkene (ca. 4 år). For Bitcoin har den vært gulvet i bjørnemarkeder: ved syklusbunnene har kursen ligget fra rett under linja (2018) til rundt 30–36 % under (2020 og 2022). Brudd under har ofte betydd kapitulasjon, og å komme tilbake over har ofte vært starten på ny opptur.'],
       ['w50', t.w50, '50-ukerslinja', 'Snittet av de siste 50 ukelukkene. Mange makroanalytikere bruker den som skillet mellom bjørne- og oksemarked: flere ukelukk over har startet store oppturer, og brudd under har startet store fall. Det er ukelukket (søndag kl. 01/02 norsk tid) som teller.']];
     const histTxt = k => { const x = ML && ML.tests && ML.tests[k]; if (!x || !x.n) return '';
       const ex = (x.last || []).filter(e => e.r90 != null).slice(-3).map(e => `${my(Date.parse(e.date))}: ${e.held ? 'holdt' : 'brøt'}, ${pct0(e.r90)} etter 3 mnd`).join('; ');
@@ -309,7 +318,7 @@
     document.getElementById('tm-title').textContent = `${n} – siste ${PER[T.per][0]}`;
     const L = live(T.sym), ph = document.getElementById('tm-price');
     ph.replaceChildren(...(L && L.p ? [el('b', null, price(L.p) + ' '), el('span', cls(L.chg), pct(L.chg / 100) + ' siste døgn')] : [el('span', 'muted', 'Pris ikke tilgjengelig')]));
-    if (reload) { status(); loadK(T.sym, tf, true).then(() => { paint(true); status(); }); if (tf !== '1d') loadK(T.sym, '1d').then(() => { paint(); drawExplain(); drawLevels(); }); }
+    if (reload) { status(); loadK(T.sym, tf, true).then(() => { paint(true); status(); }); if (tf !== '1d') loadK(T.sym, '1d').then(() => { paint(); drawExplain(); drawLevels(); }); if (tf !== '1w') loadK(T.sym, '1w').then(() => { paint(); drawLevels(); }); }
     else { paint(); status(); }
     drawExplain(); drawLevels(); drawTF(); poll();
   }
