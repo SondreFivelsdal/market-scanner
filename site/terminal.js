@@ -7,7 +7,7 @@
   const MS = { '15m': 9e5, '1h': 36e5, '4h': 144e5, '1d': 864e5, '1w': 6048e5 };
   const PER = { '1D': ['1 dag', '15m', 96], '1U': ['1 uke', '1h', 168], '1M': ['1 måned', '4h', 180], '3M': ['3 måneder', '1d', 92], '1Å': ['1 år', '1d', 366], '5Å': ['5 år', '1w', 262] };
   const POLL = { '15m': 15e3, '1h': 3e4, '4h': 6e4, '1d': 6e4, '1w': 3e5 };
-  const IND = { lv: ['Støtte og motstand', true], tl: ['Trendlinjer', true], vol: ['Volum', true], w200: ['200-ukerslinja', true], w50: ['50-ukerslinja', true], s300: ['300-dagerslinja', false], e50: ['50-dagerslinja', false], e20: ['20-dagerslinja', false], vwap: ['VWAP (dagssnitt)', false], bb: ['Bollinger-bånd', false], mk: ['Regelskifter (piler)', false] };
+  const IND = { lv: ['Støtte og motstand', true], tl: ['Trendlinjer', true], vol: ['Volum', true], w200: ['200-ukerslinja', true], w200z: ['200W-soner (Fire sale → Very expensive)', true], halv: ['Bitcoin-halvering ±540 d', true], w50: ['50-ukerslinja', true], s300: ['300-dagerslinja', false], e50: ['50-dagerslinja', false], e20: ['20-dagerslinja', false], vwap: ['VWAP (dagssnitt)', false], bb: ['Bollinger-bånd', false], mk: ['Regelskifter (piler)', false] };
   const T = { sym: null, per: '3M', sub: 'none', ind: Object.fromEntries(Object.entries(IND).map(([k, v]) => [k, v[1]])), kl: {}, glob: null, fng: null, built: false, chart: null, timer: null, dayAt: 0 };
   try { const s = JSON.parse(localStorage.getItem('ms-term2') || '{}'); if (s.ind && s.ind.tl == null) s.ind.tl = true; if (s.per && PER[s.per]) T.per = s.per; if (s.sub) T.sub = s.sub; if (s.ind) Object.assign(T.ind, s.ind); } catch (e) { /* ingen lagring */ }
   const save = () => { try { localStorage.setItem('ms-term2', JSON.stringify({ per: T.per, sub: T.sub, ind: T.ind })); } catch (e) { /* ignorer */ } };
@@ -172,7 +172,9 @@
     // 50-ukers og 300-dagers: linjer på dags- og ukegraf, vannrette streker ellers
     { const W2 = w200of(T.sym); if (T.ind.w200 && isD && W2) C.S.w200.setData(B.map(b => { const v = W2.at(b.t); return v == null ? { time: ts(b.t) } : { time: ts(b.t), value: v }; }));
       else if (T.ind.w200 && tf === '1w') C.S.w200.setData(line(B, RG.sma(cl, 200)));
-      else { C.S.w200.setData([]); if (T.ind.w200 && W2 && W2.now) pl(W2.now, '#d6336c', '200-ukerslinja', 0, 2); } }
+      else { C.S.w200.setData([]); if (T.ind.w200 && W2 && W2.now) pl(W2.now, '#d6336c', '200-ukerslinja', 0, 2); }
+      // grunnlag for 200W-sonene (tegnes i placeZones): én verdi per lys der 200W er kjent
+      const WS = isD && W2 ? B.map(b => W2.at(b.t)) : tf === '1w' ? RG.sma(cl, 200) : null; C.w2 = WS ? B.map((b, i) => WS[i] == null ? null : { t: b.t, w: WS[i] }).filter(Boolean) : []; C.w2now = W2 && W2.now; C.tfMs = MS[tf]; }
     if (T.ind.w50 && isD) C.S.w50.setData(line(B, w50daily(B))); else if (T.ind.w50 && tf === '1w') C.S.w50.setData(line(B, RG.sma(cl, 50))); else { C.S.w50.setData([]); if (T.ind.w50 && tr && tr.w50) pl(tr.w50, css('--fg'), '50-ukerslinja', 2, 1); }
     if (T.ind.s300 && isD) C.S.s300.setData(line(B, RG.sma(cl, 300)));
     else if (T.ind.s300 && tf === '1w' && D && D.B) { const S3 = RG.sma(D.B.map(b => b.c), 300), m3 = new Map(D.B.map((b, i) => [b.t, S3[i]])); C.S.s300.setData(B.map(b => { let v = null; for (let d = 6; d >= 0 && v == null; d--) v = m3.get(b.t + d * 864e5); return v == null ? { time: ts(b.t) } : { time: ts(b.t), value: v }; })); }
@@ -206,8 +208,47 @@
     C.k = k; C.B = B; hover(B[B.length - 1], true); legend(tf);
   }
   function placeZones() { const C = T.chart; if (!C || !C.layer) return; const w = C.ch.timeScale().width();
-    C.layer.replaceChildren(...C.zones.map(z => { const y1 = C.S.candle.priceToCoordinate(z.hi), y2 = C.S.candle.priceToCoordinate(z.lo); if (y1 == null || y2 == null) return null;
+    C.layer.replaceChildren(...overlays(C, w), ...C.zones.map(z => { const y1 = C.S.candle.priceToCoordinate(z.hi), y2 = C.S.candle.priceToCoordinate(z.lo); if (y1 == null || y2 == null) return null;
       const d = el('div', 'zone ' + z.kind); d.style.top = Math.min(y1, y2) + 'px'; d.style.height = Math.max(3, Math.abs(y2 - y1)) + 'px'; d.style.width = w + 'px'; d.append(el('span', null, w < 520 ? z.short : z.label)); return d; }).filter(Boolean)); }
+  // 200W-soner (som Bullmania «200W MA Valuation Zones»: 0,75 / 1 / 1,25 / 1,5 / 1,75 × 200-ukers snitt) og Bitcoin-halveringer ±540 dager.
+  // Tegnes som SVG i samme lag som støtte/motstand, med koordinater fra grafen, og tegnes på nytt ved zoom/scroll.
+  const W2Z = [[0, 0.75, '#a855f7', 'Fire sale'], [0.75, 1, '#3b82f6', 'Very cheap'], [1, 1.25, '#22c55e', 'Cheap'], [1.25, 1.5, '#eab308', 'Fair value'], [1.5, 1.75, '#f97316', 'Expensive'], [1.75, 1e3, '#ef4444', 'Very expensive']];
+  const HALV = [['2012-11-28', false], ['2016-07-09', false], ['2020-05-11', false], ['2024-04-20', false], ['2028-04-15', true]];
+  function overlays(C, w) {
+    const B = C.B; if (!B || !B.length || (!T.ind.w200z && !T.ind.halv)) return [];
+    const NS = 'http://www.w3.org/2000/svg', H = C.ch.timeScale().height ? C.layer.clientHeight - C.ch.timeScale().height() : C.layer.clientHeight - 28;
+    const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('width', w); svg.setAttribute('height', Math.max(0, H)); svg.style.position = 'absolute'; svg.style.left = '0'; svg.style.top = '0';
+    const mk = (tag, at) => { const e = document.createElementNS(NS, tag); for (const k in at) e.setAttribute(k, at[k]); svg.append(e); return e; };
+    const yOf = p => { const y = C.S.candle.priceToCoordinate(p); return y == null ? null : Math.max(-5, Math.min(H + 5, y)); };
+    const step = C.tfMs || 864e5, n = B.length, idxOf = new Map(B.map((b, i) => [b.t, i]));
+    const xOf = t => { let i = idxOf.get(t); if (i == null) { if (t > B[n - 1].t) i = n - 1 + (t - B[n - 1].t) / step; else if (t < B[0].t) i = (t - B[0].t) / step; else { let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (B[m].t <= t) lo = m; else hi = m; } i = lo + (t - B[lo].t) / (B[hi].t - B[lo].t); } }
+      const ts2 = C.ch.timeScale(), f = Math.floor(i), x0 = ts2.logicalToCoordinate(f); if (i === f || x0 == null) return x0; const x1 = ts2.logicalToCoordinate(f + 1); return x1 == null ? x0 : x0 + (x1 - x0) * (i - f); };
+    if (T.ind.w200z && C.w2 && C.w2.length > 1) {
+      const pts = C.w2.map(d => ({ x: xOf(d.t), w: d.w })).filter(d => d.x != null && d.x > -50 && d.x < w + 50);
+      if (pts.length > 1) {
+        W2Z.forEach(([a, b, col]) => { const top = pts.map(d => `${d.x.toFixed(1)},${yOf(d.w * b).toFixed(1)}`), bot = pts.slice().reverse().map(d => `${d.x.toFixed(1)},${yOf(d.w * a).toFixed(1)}`);
+          if (top.some(v => v.includes('null')) || bot.some(v => v.includes('null'))) return; mk('polygon', { points: top.concat(bot).join(' '), fill: col, 'fill-opacity': 0.12 }); });
+        [0.75, 1.25, 1.5, 1.75].forEach(f => mk('polyline', { points: pts.map(d => `${d.x.toFixed(1)},${yOf(d.w * f).toFixed(1)}`).join(' '), fill: 'none', stroke: css('--axis'), 'stroke-opacity': 0.45, 'stroke-width': 1 }));
+        const lw = pts[pts.length - 1].w;
+        W2Z.forEach(([a, b, col, lab]) => { const y0 = yOf(lw * a), y1 = yOf(lw * b); if (y0 == null || y1 == null || y0 - y1 < 14) return; const t = mk('text', { x: w - 8, y: (y0 + y1) / 2, dy: '0.35em', 'text-anchor': 'end', fill: col, 'font-size': 11, 'font-weight': 600 }); t.textContent = lab; });
+      } }
+    if (T.ind.halv) {
+      const D = T.kl[key('BTC', '1d')], DB = D && D.B, dIx = DB ? new Map(DB.map((b, i) => [b.t, i])) : null, lastT = B[n - 1].t, gold = '#a16207';
+      HALV.forEach(([ds, est]) => { const th = Date.parse(ds + 'T00:00:00Z'), a = th - 540 * 864e5, b2 = th + 540 * 864e5;
+        const xa = xOf(a), xh = xOf(th), xb = xOf(b2); if (xa == null || xh == null || xb == null || xb < 0 || xa > w) return;
+        const cl = x => Math.max(0, Math.min(w, x));
+        if (cl(xh) > cl(xa)) mk('rect', { x: cl(xa), y: 0, width: cl(xh) - cl(xa), height: H, fill: css('--axis'), 'fill-opacity': 0.08 });
+        if (cl(xb) > cl(xh)) mk('rect', { x: cl(xh), y: 0, width: cl(xb) - cl(xh), height: H, fill: '#eab308', 'fill-opacity': 0.09 });
+        [[xa, '−540 d'], [xb, '+540 d']].forEach(([x, lab]) => { if (x < 0 || x > w) return; mk('line', { x1: x, x2: x, y1: 0, y2: H, stroke: gold, 'stroke-opacity': 0.4, 'stroke-width': 1 }); const t = mk('text', { x: x + 3, y: H - 6, fill: gold, 'font-size': 10 }); t.textContent = lab; });
+        if (xh >= 0 && xh <= w) { mk('line', { x1: xh, x2: xh, y1: 0, y2: H, stroke: gold, 'stroke-width': 1.5, 'stroke-dasharray': '6 4' });
+          let txt = `Halvering ${ds.split('-').reverse().join('.')}${est ? ' (anslag)' : ''}`;
+          if (!est && DB) { const ih = dIx.get(th); if (ih != null) { const j = Math.min(DB.length - 1, ih + 540), r = (DB[j].c / DB[ih].c - 1) * 100; txt += ` · BTC ${j - ih < 540 ? 'hittil' : '+540 d'}: ${r >= 0 ? '+' : '−'}${Math.abs(r).toFixed(0)} %`; } }
+          if (est && th > lastT) txt += ` – ${Math.round((th - Date.now()) / 864e5)} d igjen`;
+          const t = mk('text', { x: xh + 4, y: 14, fill: gold, 'font-size': 11, 'font-weight': 600 }); t.textContent = txt; }
+        else if (est && th > lastT && xa <= w) { const t = mk('text', { x: w - 8, y: 30, 'text-anchor': 'end', fill: gold, 'font-size': 11, 'font-weight': 600 }); t.textContent = `Neste halvering ca. april 2028 – ${Math.round((th - Date.now()) / 864e5)} d igjen`; }
+      }); }
+    return [svg];
+  }
   function markers(B) { const s = RG.biasSeries(B, closedEnd(B)), out = []; let prev = null;
     for (const x of s) { if (x.b !== prev && prev != null && x.b !== 'neutral') out.push({ time: ts(x.t), position: x.b === 'long' ? 'belowBar' : 'aboveBar', color: x.b === 'long' ? css('--up') : css('--down'), shape: x.b === 'long' ? 'arrowUp' : 'arrowDown', text: '' }); prev = x.b; }
     return out; }
@@ -219,6 +260,8 @@
     if (T.ind.lv) a.push(sw('up', 'Støtte: område der kursen har snudd opp før'), sw('down', 'Motstand: område der kursen har snudd ned før'));
     if (T.ind.tl) a.push(it(css('--up'), 'Stigende trendlinje (gjennom bunner)'), it(css('--down'), 'Fallende trendlinje (gjennom topper)'));
     if (T.ind.w200) a.push(it('#d6336c', '200-ukerslinja – historisk gulv i bjørnemarkeder'));
+    if (T.ind.w200z) a.push(sw('w2z', 'Fargebånd: 200W-soner – lilla Fire sale (< 0,75×), blå Very cheap (0,75–1×), grønn Cheap, gul Fair value, oransje Expensive, rød Very expensive (> 1,75×)'));
+    if (T.ind.halv) a.push(it('#a16207', 'Bitcoin-halvering (stiplet), grått = 540 dager før, gult = 540 dager etter', 'dashed'));
     if (T.ind.w50) a.push(it(css('--fg'), '50-ukerslinja – skillet mellom bjørne- og oksemarked', 'dashed')); if (T.ind.s300) a.push(it(css('--orange'), '300-dagerslinja', 'dotted'));
     if (T.ind.e50) a.push(it(css('--blue'), '50-dagerslinja')); if (T.ind.e20) a.push(it(css('--purple'), '20-dagerslinja'));
     box.replaceChildren(...a);
