@@ -125,6 +125,125 @@
     const tw = el('div', 'tw'); tw.append(t); card.append(tw, el('p', 'muted small', 'Dette er regneeksempler: «hvis kursen beveger seg som den gjorde da». Det er ikke en prognose.')); return card;
   }
 
+  // ---------------------------------------------------------------- halveringsvindu ±540 dager
+  // Bare for «Bitcoin-halvering»: hvor er vi nå i forhold til 540 dager før og 540 dager etter halveringen?
+  // Hver syklus måles fra kursen 540 dager før halveringen (= 0 %). Da kan også syklusen fram mot den kommende halveringen vises.
+  const HW = 540, HNEXT = '2028-04-15', HS = { off: new Set(), med: true };
+  const hYear = r => new Date(r.h * DAY).getUTCFullYear() + (r.est ? ' (anslag)' : '');
+  const fin = v => v != null && isFinite(v);
+  function halvCycles(m, k) {
+    const T = ser(m, k); if (!T) return null; const past = datesFor(m, 'halving', k), nx = dOf(HNEXT);
+    const hs = past.map(d => ({ h: d, est: false })); if (!past.some(d => Math.abs(d - nx) < 90)) hs.push({ h: nx, est: true });
+    const rows = [];
+    for (const c of hs) { const b = c.h - HW, i0 = at(T, b - 1) + 1; c.ok = false; rows.push(c);
+      if (b > T.last || i0 >= T.t.length || T.t[i0] - b > 6) continue;
+      const base = T.c[i0], path = new Float32Array(2 * HW + 1).fill(NaN); let lastQ = null, mn = Infinity, mnQ = null;
+      for (let q = -HW; q <= HW; q++) { const d = c.h + q; if (d > T.last) break; const ix = at(T, d); if (ix < 0 || d - T.t[ix] > 6) continue; const v = T.c[ix] / base; path[q + HW] = v; lastQ = q; if (v < mn) { mn = v; mnQ = q; } }
+      // bunnen før og toppen etter halveringen (innen 800 dager)
+      let lo = -1, hi = -1; for (let ix = Math.max(0, at(T, c.h - 801) + 1); ix < T.t.length && T.t[ix] <= c.h; ix++) if (lo < 0 || T.c[ix] < T.c[lo]) lo = ix;
+      for (let ix = Math.max(0, at(T, c.h - 1) + 1); ix < T.t.length && T.t[ix] <= c.h + 800; ix++) if (hi < 0 || T.c[ix] > T.c[hi]) hi = ix;
+      const loFull = T.t[0] <= c.h - 800 + 6;
+      Object.assign(c, { ok: true, d0: T.t[i0], base, path, lastQ, mn, mnQ, end: fin(path[2 * HW]) ? path[2 * HW] : null,
+        lo: lo >= 0 && loFull && T.last >= c.h ? { q: T.t[lo] - c.h, v: T.c[lo] } : null, hi: hi >= 0 ? { q: T.t[hi] - c.h, v: T.c[hi], done: T.last >= c.h + 800 } : null }); }
+    return { T, rows };
+  }
+  function halvCard(m, k, A) {
+    const R = halvCycles(m, k); if (!R) return null; const { T, rows } = R, today = Math.floor(Date.now() / DAY);
+    const cur = rows.find(r => today >= r.h - HW && today <= r.h + HW) || null, next = rows.find(r => r.h - HW > today) || null;
+    const past = rows.filter(r => r !== cur && r.ok && r.h + HW <= T.last), q = cur ? today - cur.h : null;
+    const card = el('div', 'card');
+    card.append(el('h3', null, `Hvor er vi i forhold til halveringen? (±${HW} dager)`),
+      el('p', 'muted small', `Vinduet går fra ${HW} dager før til ${HW} dager etter hver Bitcoin-halvering. Hver syklus er målt fra kursen ${HW} dager før halveringen (= 0 %), slik at du kan se hvor i vinduet vi er nå og sammenligne med de tidligere syklusene.`));
+    // nå-boks
+    const nb = el('div', 'evnow'), t = [];
+    if (cur) { nb.append(el('b', null, q < 0 ? `Nå: dag −${-q} – ${HW + q} dager inn i vinduet` : `Nå: dag +${q} – ${q} dager etter halveringen`));
+      t.push(q < 0 ? `Halveringen kommer ${cur.est ? 'etter anslag ' : ''}${dmy(cur.h)}, om ca. ${-q} dager. Vinduet startet ${dmy(cur.h - HW)} og slutter ${dmy(cur.h + HW)}.` : `Halveringen var ${dmy(cur.h)}. Det er ${HW - q} dager igjen til +${HW} (${dmy(cur.h + HW)}).`);
+      if (cur.ok && cur.lastQ != null) { const v = cur.path[cur.lastQ + HW]; t.push(`${A.name} er ${pct(v)} siden starten av vinduet (fra ${price(cur.base)} den ${dmy(cur.d0)}).`);
+        const same = past.map(r => [r, r.path[cur.lastQ + HW]]).filter(x => fin(x[1]));
+        if (same.length) t.push(`På samme dag i tidligere sykluser: ${same.map(([r, x]) => `${hYear(r)} ${pct(x)}`).join(', ')}${same.length >= 2 ? ` (median ${pct(quant(same.map(x => x[1]), 0.5))})` : ''}.`); }
+      else t.push(`Kursdata for ${A.name} fra starten av vinduet mangler.`);
+      // de tre siste syklusene (den første, 2012, fulgte ikke mønsteret: bunn og topp kom ca. 370 dager fra halveringen)
+      const last3 = past.slice(-3), bq = last3.filter(r => r.lo).map(r => r.lo.q), tq = last3.filter(r => r.hi && r.hi.done).map(r => r.hi.q), nm = n => n === 3 ? 'de tre siste syklusene' : `de ${n} siste syklusene`;
+      if (bq.length >= 2) { const a = Math.min(...bq), b = Math.max(...bq); t.push(`I ${nm(bq.length)} kom bunnen ${-b}–${-a} dager før halveringen. Med samme avstand denne gangen tilsvarer det ${dmy(cur.h + a)} – ${dmy(cur.h + b)}${today > cur.h + b ? ' – det spennet er nå passert' : today >= cur.h + a ? ' – vi er inne i det spennet nå' : ''}.`); }
+      if (tq.length >= 2) { const a = Math.min(...tq), b = Math.max(...tq); t.push(`Toppen kom ${a}–${b} dager etter halveringen, som tilsvarer ${dmy(cur.h + a)} – ${dmy(cur.h + b)}.`); } }
+    else if (next) { nb.append(el('b', null, 'Nå: mellom to vinduer')); t.push(`Neste vindu starter ${dmy(next.h - HW)}, om ${next.h - HW - today} dager (${HW} dager før halveringen ${next.est ? 'som er anslått til ' : ''}${dmy(next.h)}).`); }
+    nb.append(el('p', null, t.join(' '))); card.append(nb);
+    if (cur) card.append(halvBar(cur, past, today));
+    // graf
+    const gslot = el('div', 'stack'); gslot.style.gap = '12px'; card.append(gslot);
+    const redraw = () => gslot.replaceChildren(halvChips(past, cur, redraw), halvChart(past, cur));
+    redraw();
+    // tabell syklus for syklus
+    const tb = el('table', 't compact'), hr = el('tr'); ['Halvering', `Kjøp ${HW} d før`, `Salg ${HW} d etter`, 'Gevinst', 'Laveste underveis', 'Bunn', 'Topp'].forEach((x, i) => hr.append(el('th', i ? '' : 'l', x))); tb.append(hr);
+    for (const r of [...rows].reverse()) { if (!r.ok && r !== cur) continue; const tr = el('tr', 'evrow' + (r === cur ? ' cur' : '')); tr.style.cursor = 'default';
+      const c0 = el('td', 'l'); c0.append(el('b', null, dmy(r.h))); if (r.est) c0.append(el('span', 'muted small sub2', 'anslag')); if (r === cur) c0.append(el('span', 'small sub2', 'pågår')); tr.append(c0);
+      if (!r.ok) { tr.append(el('td', 'muted', '–'), el('td', 'muted', '…'), el('td', 'muted', '…'), el('td', 'muted', '…'), el('td', 'muted', '…'), el('td', 'muted', '…')); tb.append(tr); continue; }
+      const cb = el('td'); cb.append(el('b', null, price(r.base)), el('span', 'muted small sub2', dmy(r.d0))); tr.append(cb);
+      const done = r.end != null, vNow = r.lastQ != null ? r.path[r.lastQ + HW] : null;
+      const cs = el('td'); if (done) cs.append(el('b', null, price(r.base * r.end)), el('span', 'muted small sub2', dmy(r.h + HW))); else cs.append(el('span', 'muted', `ca. ${dmy(r.h + HW)}`)); tr.append(cs);
+      const cg = el('td', cls(done ? r.end : vNow)); cg.append(el('b', null, pct(done ? r.end : vNow))); if (!done) cg.append(el('span', 'muted small sub2', 'hittil')); tr.append(cg);
+      const cm = el('td', r.mn < 1 ? 'down' : 'muted'); cm.append(el('b', null, r.mn < 1 ? pct(r.mn) : 'aldri under'), el('span', 'muted small sub2', r.mnQ == null || r.mn >= 1 ? '' : `dag ${r.mnQ > 0 ? '+' : r.mnQ < 0 ? '−' : ''}${Math.abs(r.mnQ)}`)); tr.append(cm);
+      tr.append(el('td', null, r.lo ? `${-r.lo.q} d før` : '…'), el('td', null, r.hi && r.hi.done ? `${r.hi.q} d etter` : '…')); tb.append(tr); }
+    const tw = el('div', 'tw'); tw.append(tb); card.append(el('h3', null, 'Syklus for syklus'), tw,
+      el('p', 'muted small', `«Bunn» = laveste dagslukk de siste 800 dagene før halveringen. «Topp» = høyeste dagslukk de første 800 dagene etter. «Laveste underveis» = laveste kurs i vinduet målt fra kjøpskursen. Neste halvering er et anslag: den skjer ved blokk 1 050 000, og datoen avhenger av hvor raskt blokkene kommer.`),
+      el('div', 'note', 'Bare 3–4 sykluser finnes, og gevinsten har blitt mindre for hver gang. Mønsteret er historikk, ikke en prognose.'));
+    return card;
+  }
+  // tidslinje: −540 … halvering … +540, med i dag og tidligere bunner/topper
+  function halvBar(cur, past, today) {
+    const box = el('div', 'evchart'), W = 760, Hh = 74, L = 18, w = W - 2 * L, X = q => L + (q + HW) / (2 * HW) * w, s = sv('svg', { viewBox: `0 0 ${W} ${Hh}`, role: 'img', 'aria-label': 'Hvor i halveringsvinduet vi er i dag' }); box.append(s);
+    s.append(sv('rect', { x: X(-HW), y: 24, width: X(0) - X(-HW), height: 14, fill: css('--axis'), opacity: 0.25, rx: 3 }), sv('rect', { x: X(0), y: 24, width: X(HW) - X(0), height: 14, fill: '#eab308', opacity: 0.35, rx: 3 }));
+    for (const r of past) { if (r.lo && r.lo.q >= -HW) { const c = sv('path', { d: `M${X(r.lo.q) - 4} 46 L${X(r.lo.q) + 4} 46 L${X(r.lo.q)} 40 Z`, fill: css('--down') }); const ti = sv('title'); ti.textContent = `Bunn ${hYear(r)}: ${-r.lo.q} dager før`; c.append(ti); s.append(c); }
+      if (r.hi && r.hi.done && r.hi.q <= HW) { const c = sv('path', { d: `M${X(r.hi.q) - 4} 18 L${X(r.hi.q) + 4} 18 L${X(r.hi.q)} 23 Z`, fill: css('--up') }); const ti = sv('title'); ti.textContent = `Topp ${hYear(r)}: ${r.hi.q} dager etter`; c.append(ti); s.append(c); } }
+    [[-HW, `−${HW} d`, 'start'], [0, 'Halvering', 'middle'], [HW, `+${HW} d`, 'end']].forEach(([q, l, a]) => { const t = sv('text', { x: X(q), y: Hh - 6, 'text-anchor': a, class: 'ax' }); t.textContent = l; s.append(t); });
+    s.append(sv('line', { x1: X(0), x2: X(0), y1: 20, y2: 42, stroke: '#a16207', 'stroke-width': 2, 'stroke-dasharray': '3 2' }));
+    const q = Math.max(-HW, Math.min(HW, today - cur.h)); s.append(sv('line', { x1: X(q), x2: X(q), y1: 14, y2: 48, stroke: css('--blue'), 'stroke-width': 3 }));
+    const t = sv('text', { x: X(q), y: 11, 'text-anchor': q < -HW * 0.8 ? 'start' : q > HW * 0.8 ? 'end' : 'middle', class: 'ax lab', fill: css('--blue') }); t.textContent = `I dag (dag ${q < 0 ? '−' : '+'}${Math.abs(q)})`; s.append(t);
+    const lg = el('div', 'legend'); const it = (c, txt) => { const sp = el('span'); const b = el('b'); b.textContent = '▲'; b.style.color = c; b.style.marginRight = '6px'; sp.append(b, document.createTextNode(txt)); return sp; };
+    lg.append(it(css('--down'), 'Bunn i tidligere sykluser'), it(css('--up'), 'Topp i tidligere sykluser')); box.append(lg); return box;
+  }
+  function halvChips(past, cur, redraw) {
+    const tg = (txt, on, fn) => { const b = el('button', 'chip', txt); b.type = 'button'; b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.addEventListener('click', fn); return b; };
+    const r = el('div', 'chips'); r.append(el('span', 'muted small', 'Vis:'), tg('Median', HS.med, () => { HS.med = !HS.med; redraw(); }));
+    if (cur && cur.ok) r.append(tg(`Nå (${hYear(cur)})`, !HS.off.has('cur'), () => { HS.off.has('cur') ? HS.off.delete('cur') : HS.off.add('cur'); redraw(); }));
+    for (const p of [...past].reverse()) r.append(tg(hYear(p), !HS.off.has(p.h), () => { HS.off.has(p.h) ? HS.off.delete(p.h) : HS.off.add(p.h); redraw(); }));
+    return r;
+  }
+  function halvChart(past, cur) {
+    const box = el('div', 'evchart'), W = 760, Hh = 360, P = { l: 60, r: 92, t: 12, b: 30 }, w = W - P.l - P.r, h = Hh - P.t - P.b;
+    const s = sv('svg', { viewBox: `0 0 ${W} ${Hh}`, role: 'img', 'aria-label': `Kursen fra ${HW} dager før til ${HW} dager etter hver halvering` }); box.append(s);
+    const shown = past.filter(r => !HS.off.has(r.h)), now = cur && cur.ok && !HS.off.has('cur') ? cur : null, pal = PAL();
+    const colOf = r => pal[past.indexOf(r) % pal.length], v = (r, q) => { const x = r.path[q + HW]; return fin(x) ? x : undefined; };
+    const medRows = shown.length >= 2 ? shown : past, med = {}; for (let q = -HW; q <= HW; q++) { const a = medRows.map(r => v(r, q)).filter(x => x !== undefined); med[q] = a.length >= 2 ? quant(a, 0.5) : null; }
+    const all = []; for (const r of [...shown, ...(now ? [now] : [])]) for (let q = -HW; q <= HW; q += 3) { const x = v(r, q); if (x !== undefined) all.push(x); }
+    if (HS.med) for (let q = -HW; q <= HW; q += 3) if (med[q] != null) all.push(med[q]);
+    let lo = Math.log(Math.max(0.03, all.length ? Math.min(...all) : 0.5)), hi = Math.log(Math.min(200, all.length ? Math.max(...all) : 2)); lo = Math.min(lo, Math.log(0.8)); hi = Math.max(hi, Math.log(1.25));
+    const X = q => P.l + (q + HW) / (2 * HW) * w, Y = x => P.t + (hi - Math.log(Math.max(x, 1e-6))) / (hi - lo) * h;
+    s.append(sv('rect', { x: X(0), y: P.t, width: X(HW) - X(0), height: h, fill: '#eab308', opacity: 0.07 }));
+    for (const x of [0.1, 0.25, 0.5, 0.67, 1, 1.5, 2, 3, 5, 10, 20, 50, 100].filter(x => Math.log(x) >= lo && Math.log(x) <= hi)) { s.append(sv('line', { x1: P.l, x2: P.l + w, y1: Y(x), y2: Y(x), stroke: x === 1 ? css('--axis') : css('--grid'), 'stroke-width': x === 1 ? 1.2 : 1 })); const t = sv('text', { x: P.l - 8, y: Y(x) + 4, 'text-anchor': 'end', class: 'ax' }); t.textContent = pct(x); s.append(t); }
+    for (const q of [-540, -360, -180, 0, 180, 360, 540]) { const t = sv('text', { x: X(q), y: Hh - 8, 'text-anchor': q === -HW ? 'start' : q === HW ? 'end' : 'middle', class: 'ax' }); t.textContent = q === 0 ? 'Halvering' : `${q > 0 ? '+' : '−'}${Math.abs(q)} d`; s.append(t); }
+    s.append(sv('line', { x1: X(0), x2: X(0), y1: P.t, y2: P.t + h, stroke: '#a16207', 'stroke-width': 1.5, 'stroke-dasharray': '6 4' }));
+    const line = r => { let d = '', pen = false; for (let q = -HW; q <= HW; q += 2) { const x = v(r, q); if (x === undefined) { pen = false; continue; } d += (pen ? 'L' : 'M') + X(q).toFixed(1) + ' ' + Y(x).toFixed(1); pen = true; } return d; };
+    const end = (r, txt, color) => { const q = r.lastQ; if (q == null) return; const t = sv('text', { x: X(q) + 5, y: Y(r.path[q + HW]) + 4, class: 'ax lab', fill: color }); t.textContent = txt; s.append(t); };
+    for (const r of shown) { s.append(sv('path', { d: line(r), fill: 'none', stroke: colOf(r), 'stroke-width': 2, opacity: 0.85, 'stroke-linejoin': 'round' })); end(r, hYear(r), colOf(r)); }
+    if (HS.med && Object.values(med).some(x => x != null)) { let d = ''; for (let q = -HW; q <= HW; q++) if (med[q] != null) d += (d ? 'L' : 'M') + X(q).toFixed(1) + ' ' + Y(med[q]).toFixed(1); s.append(sv('path', { d, fill: 'none', stroke: css('--fg'), 'stroke-width': 3, 'stroke-dasharray': '7 4', 'stroke-linejoin': 'round' })); }
+    if (now) { s.append(sv('path', { d: line(now), fill: 'none', stroke: css('--blue'), 'stroke-width': 3.4, 'stroke-linejoin': 'round' })); const q = now.lastQ; s.append(sv('circle', { cx: X(q), cy: Y(now.path[q + HW]), r: 4.5, fill: css('--blue') })); end(now, 'Nå', css('--blue')); }
+    const vl = sv('line', { y1: P.t, y2: P.t + h, stroke: css('--axis'), 'stroke-dasharray': '3 3', visibility: 'hidden' }); s.append(vl);
+    const tip = el('div', 'tip'); tip.style.display = 'none'; box.append(tip); const ov = sv('rect', { x: P.l, y: P.t, width: w, height: h, fill: 'transparent' }); s.append(ov);
+    ov.addEventListener('pointermove', ev => { const b = s.getBoundingClientRect(), q = Math.round(Math.max(-HW, Math.min(HW, ((ev.clientX - b.left) / b.width * W - P.l) / w * 2 * HW - HW)));
+      vl.setAttribute('x1', X(q)); vl.setAttribute('x2', X(q)); vl.setAttribute('visibility', 'visible');
+      const ls = [q === 0 ? 'Halveringsdagen' : q < 0 ? `${-q} dager før halveringen` : `${q} dager etter halveringen`];
+      if (now && v(now, q) !== undefined) ls.push(`Nå (${hYear(now)}): ${pct(v(now, q))}`); if (HS.med && med[q] != null) ls.push(`Median: ${pct(med[q])}`);
+      for (const r of [...shown].reverse()) if (v(r, q) !== undefined) ls.push(`${hYear(r)}: ${pct(v(r, q))}`);
+      tip.replaceChildren(...ls.map((x, i) => el(i ? 'div' : 'b', null, x))); tip.style.display = 'grid';
+      const bx = box.getBoundingClientRect(); let lx = ev.clientX - bx.left + 14; if (lx > bx.width - 200) lx = ev.clientX - bx.left - 210; tip.style.left = lx + 'px'; tip.style.top = Math.max(0, ev.clientY - bx.top - 30) + 'px'; });
+    ov.addEventListener('pointerleave', () => { vl.setAttribute('visibility', 'hidden'); tip.style.display = 'none'; });
+    const lg = el('div', 'legend'), it = (c, txt, wd = 3, dash) => { const sp = el('span'); const i = el('i'); i.style.borderTopColor = c; i.style.borderTopWidth = wd + 'px'; if (dash) i.style.borderTopStyle = 'dashed'; sp.append(i, document.createTextNode(txt)); return sp; };
+    if (now) lg.append(it(css('--blue'), `Nå: syklusen fram mot ${hYear(now)}`)); if (HS.med) lg.append(it(css('--fg'), `Median av ${medRows === shown ? 'viste' : 'alle'} tidligere (${medRows.length})`, 3, true));
+    shown.forEach(r => lg.append(it(colOf(r), `Halvering ${hYear(r)}`, 2))); lg.append(it('#a16207', 'Halveringsdagen (gult felt = etter)', 2, true));
+    const wrap = el('div', 'stack'); wrap.style.gap = '6px'; wrap.append(el('p', 'muted small', 'Loggskala, 0 % = kursen 540 dager før halveringen. Pek i grafen for å se tallene.'), box, lg); return wrap;
+  }
+
   // ---------------------------------------------------------------- tegning
   function render() {
     const root = document.getElementById('hendelser-in'); if (!root) return; const m = E();
@@ -201,7 +320,8 @@
       lt.append(tr); }
     const lw = el('div', 'tw'); lw.append(lt); lc.append(lw, el('p', 'muted small', 'Trykk på en rad for å velge den i grafen (eller bruk år-knappene over grafen). «…» = ikke gått lang nok tid ennå. Tilfeller tett i tid påvirkes av de samme markedsforholdene og er ikke helt uavhengige.'));
     redraw();
-    box.replaceChildren(head, stc, gc, cslot, lc, el('div', 'note', 'Historikk viser hva som skjedde – ikke hva som vil skje. Ikke kjøps- eller salgsråd.'));
+    const hc = S.ev === 'halving' ? halvCard(m, S.a, A) : null;
+    box.replaceChildren(head, ...(hc ? [hc] : []), stc, gc, cslot, lc, el('div', 'note', 'Historikk viser hva som skjedde – ikke hva som vil skje. Ikke kjøps- eller salgsråd.'));
   }
-  window.EVENTS = { render, _S: S, _study: study, _search: search };
+  window.EVENTS = { render, _S: S, _study: study, _search: search, _halv: halvCycles };
 })();
