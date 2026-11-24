@@ -88,7 +88,8 @@ button:focus-visible, [tabindex]:focus-visible, summary:focus-visible { outline:
 .chip.sm { font-size: .85rem; padding: 3px 10px; }
 .dlayer { position: absolute; left: 0; top: 0; right: 0; bottom: 0; pointer-events: none; z-index: 3; }
 .dlayer.on { pointer-events: auto; cursor: crosshair; touch-action: none; }
-.dsvg { position: absolute; left: 0; top: 0; overflow: visible; }
+.dsvg { position: absolute; left: 0; top: 0; overflow: hidden; }
+.dlab.nos { stroke: none; font-weight: 600; }
 .dshape .dhit { pointer-events: stroke; cursor: move; }
 .dshape .dhandle { pointer-events: all; cursor: grab; fill: var(--panel); stroke: var(--blue); stroke-width: 2; }
 .dshape.sel line { filter: drop-shadow(0 0 2px var(--blue)); }
@@ -104,6 +105,32 @@ button:focus-visible, [tabindex]:focus-visible, summary:focus-visible { outline:
 .lv.now { background: var(--soft); border-radius: 8px; cursor: default; font-weight: 650; }
 .lv.now .dot { background: var(--blue); }
 .str { display: inline-flex; gap: 3px; justify-content: flex-end; } .str i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); } .str i.on { background: var(--fg); }
+/* grafen på Oversikt: oppsett som i TradingView */
+.card.tv { padding: 0; gap: 0; overflow: hidden; }
+.tvtop { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.tvsym { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; } .tvsym h2 { font-size: 1.05rem; margin: 0; }
+.tvtop .tbar { flex: 1 1 380px; min-width: 0; } .tbar .grow { flex: 1; }
+.tv .tgroup { border: 0; background: none; padding: 0; }
+.tsep { display: inline-block; width: 1px; height: 22px; background: var(--line); margin: 0 2px; }
+.tvmid { display: grid; grid-template-columns: 46px minmax(0, 1fr); }
+.tvleft { border-right: 1px solid var(--line); padding: 6px 0; display: flex; justify-content: center; }
+.tgroup.vert { flex-direction: column; flex-wrap: nowrap; align-items: center; gap: 2px; }
+.tgroup.vert .tsep { width: 26px; height: 1px; margin: 4px 0; }
+.tgroup.vert .tb { width: 36px; height: 36px; padding: 0; }
+.tvmain { min-width: 0; display: flex; flex-direction: column; }
+.tv .chart { height: clamp(400px, 70vh, 760px); position: relative; }
+.tv .sub { border-top: 1px solid var(--line); }
+.tvbot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; padding: 4px 10px; border-top: 1px solid var(--line); }
+.tvbot .tbar { gap: 2px 6px; } .tvbot .tb { font-weight: 500; min-height: 28px; padding: 3px 8px; }
+.tvleg { position: absolute; left: 8px; top: 6px; z-index: 4; pointer-events: none; display: grid; gap: 1px; font-size: .82rem; font-variant-numeric: tabular-nums; max-width: calc(100% - 96px); }
+.tvleg .r { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; width: fit-content; padding: 0 4px; border-radius: 4px; background: color-mix(in srgb, var(--panel) 75%, transparent); pointer-events: auto; }
+.tvleg .r > span > .muted { margin-right: 3px; }
+.tvleg .x { font: inherit; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 4px; opacity: 0; }
+.tvleg .r:hover .x, .tvleg .x:focus-visible { opacity: 1; }
+@media (hover: none) { .tvleg .x { opacity: .7; } }
+.card.tv:fullscreen, .card.tv.fs { display: flex; flex-direction: column; border-radius: 0; background: var(--panel); }
+.card.tv.fs { position: fixed; inset: 0; z-index: 100; }
+.tv:fullscreen .tvmid, .tv.fs .tvmid { flex: 1; min-height: 0; } .tv:fullscreen .tvmain, .tv.fs .tvmain { min-height: 0; } .tv:fullscreen .chart, .tv.fs .chart { height: auto; flex: 1; }
 /* teknisk analyse og fear & greed */
 .taitems { display: grid; gap: 0; }
 .taitem { display: grid; gap: 4px; padding: 12px 0; border-top: 1px solid var(--line); } .taitem:first-child { border-top: 0; padding-top: 0; }
@@ -202,7 +229,7 @@ button.chip { font: inherit; font-size: .9rem; background: var(--panel); color: 
 .evchart .tip { display: grid; gap: 2px; }
 tr.evrow { cursor: pointer; } tr.evrow:hover td { background: var(--soft); } tr.evrow.on td { background: color-mix(in srgb, var(--blue) 14%, transparent); } tr.evrow.cur td { background: color-mix(in srgb, var(--blue) 8%, transparent); cursor: default; }
 footer a { color: inherit; }
-@media (max-width: 640px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .kpi { padding: 10px 12px; } .kpi .v { font-size: 1.15rem; } .fngtop { grid-template-columns: 1fr; } .lv > summary, .lv.now { grid-template-columns: 12px 1fr auto 3.6rem; } .lv .str { display: none; } .lv > p { padding-left: 4px; } .likerow { grid-template-columns: 1fr auto; } .tb { min-height: 34px; } }
+@media (max-width: 640px) { .tvleg .r + .r, .tvleg .r1d { display: none; } .tvleg { max-width: calc(100% - 70px); } .tvmid { grid-template-columns: 40px minmax(0, 1fr); } .tgroup.vert .tb { width: 32px; height: 32px; } .tv .chart { height: 62vh; min-height: 380px; } .tvleg { font-size: .74rem; } .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .kpi { padding: 10px 12px; } .kpi .v { font-size: 1.15rem; } .fngtop { grid-template-columns: 1fr; } .lv > summary, .lv.now { grid-template-columns: 12px 1fr auto 3.6rem; } .lv .str { display: none; } .lv > p { padding-left: 4px; } .likerow { grid-template-columns: 1fr auto; } .tb { min-height: 34px; } }
 @media (max-width: 640px) { details.mrow > summary { grid-template-columns: 1fr; gap: 2px; } details.mrow > summary .val { padding-left: 22px; font-size: .92rem; } details.mrow > summary svg.spark { display: none; } details.mrow > .in { padding-left: 0; } table.t.compact td.l { min-width: 6rem; } table.t.compact td, table.t.compact th { padding: 8px 4px; font-size: .86rem; } .card { padding: 14px; } .lvl { grid-template-columns: 1fr; } .coin { grid-template-columns: 1fr auto; } .coin .ath { text-align: left; } .rr { grid-template-columns: 1fr; gap: 4px; } .case { grid-template-columns: 1fr; } .case .stack { text-align: left !important; } .case .res { text-align: left; } #app { padding-inline: 12px; } }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
@@ -233,15 +260,13 @@ footer a { color: inherit; }
       <div class="row"><h2>Coinene</h2><span class="muted">Trykk på en coin for å se grafen</span></div>
       <div class="coins" id="tm-coins"></div>
     </div>
-    <div class="card" id="tm-detail">
-      <div class="row"><h2 id="tm-title">–</h2><span id="tm-price"></span></div>
-      <div class="tbar" id="tm-tools"></div>
-      <div class="hover" id="tm-hover"></div>
-      <div class="chart" id="tm-chart"></div>
-      <div class="sub" id="tm-sub" hidden></div>
-      <div class="tbar bottom" id="tm-range"></div>
-      <div class="legend" id="tm-legend"></div>
-      <p class="muted small" id="tm-status">–</p>
+    <div class="card tv" id="tm-detail">
+      <div class="tvtop"><div class="tvsym"><h2 id="tm-title">–</h2><span id="tm-price"></span></div><div class="tbar" id="tm-tools"></div></div>
+      <div class="tvmid">
+        <div class="tvleft" id="tm-draw"></div>
+        <div class="tvmain"><div class="chart" id="tm-chart"><div class="tvleg" id="tm-hover"></div></div><div class="sub" id="tm-sub" hidden></div></div>
+      </div>
+      <div class="tvbot"><div class="tbar" id="tm-range"></div><span class="muted small" id="tm-status">–</span></div>
     </div>
     <div class="card" id="tm-levels-card">
       <div class="row"><h2 id="tm-lv-title">Viktige nivåer</h2><span class="muted small">Trykk for hvorfor · pek for å se i grafen</span></div>

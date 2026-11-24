@@ -10,12 +10,12 @@
   const RNG = { '1D': [864e5, '15m'], '5D': [5 * 864e5, '1h'], '1M': [30 * 864e5, '4h'], '3M': [91 * 864e5, '1d'], '1Å': [365 * 864e5, '1d'], '5Å': [1826 * 864e5, '1w'], Alt: [Infinity, '1w'] };
   const OLDPER = { '1D': '1D', '1U': '5D', '1M': '1M', '3M': '3M', '1Å': '1Å', '5Å': '5Å' };
   const POLL = { '15m': 15e3, '1h': 3e4, '4h': 6e4, '1d': 6e4, '1w': 3e5, '1M': 3e5 };
-  const IND = { lv: ['Støtte og motstand', true], tl: ['Trendlinjer', true], vol: ['Volum', true], w200: ['200-ukerslinja', true], w200z: ['200W-soner (Fire sale → Very expensive)', true], halv: ['Bitcoin-halvering ±540 d', true], w50: ['50-ukerslinja', true], s300: ['300-dagerslinja', false], e50: ['50-dagerslinja', false], e20: ['20-dagerslinja', false], vwap: ['VWAP (dagssnitt)', false], bb: ['Bollinger-bånd', false], mk: ['Regelskifter (piler)', false] };
-  const T = { sym: null, tf: '1d', rng: '3M', log: false, view: { from: Date.now() - RNG['3M'][0] }, sub: 'none', ind: Object.fromEntries(Object.entries(IND).map(([k, v]) => [k, v[1]])), kl: {}, glob: null, fng: null, built: false, chart: null, timer: null, dayAt: 0 };
+  const IND = { e200: ['200-dagerslinja (hovedtrend)', true], lv: ['Støtte og motstand', true], tl: ['Trendlinjer', true], vol: ['Volum', true], w200: ['200-ukerslinja', true], w200z: ['200W-soner (Fire sale → Very expensive)', true], halv: ['Bitcoin-halvering ±540 d', true], w50: ['50-ukerslinja', true], s300: ['300-dagerslinja', false], e50: ['50-dagerslinja', false], e20: ['20-dagerslinja', false], vwap: ['VWAP (dagssnitt)', false], bb: ['Bollinger-bånd', false], mk: ['Regelskifter (piler)', false] };
+  const T = { sym: null, tf: '1d', rng: '3M', log: false, pctm: false, view: { from: Date.now() - RNG['3M'][0] }, sub: 'none', ind: Object.fromEntries(Object.entries(IND).map(([k, v]) => [k, v[1]])), kl: {}, glob: null, fng: null, built: false, chart: null, timer: null, dayAt: 0 };
   try { const s = JSON.parse(localStorage.getItem('ms-term2') || '{}'); if (s.ind && s.ind.tl == null) s.ind.tl = true; if (s.per && OLDPER[s.per] && !s.rng) { T.rng = OLDPER[s.per]; T.tf = RNG[T.rng][1]; }
-    if (s.tf && MS[s.tf]) T.tf = s.tf; if (s.rng === null || RNG[s.rng]) T.rng = s.rng; if (s.log != null) T.log = !!s.log; if (s.sub) T.sub = s.sub; if (s.ind) Object.assign(T.ind, s.ind);
+    if (s.tf && MS[s.tf]) T.tf = s.tf; if (s.rng === null || RNG[s.rng]) T.rng = s.rng; if (s.log != null) T.log = !!s.log; if (s.pctm != null) T.pctm = !!s.pctm; if (s.sub) T.sub = s.sub; if (s.ind) Object.assign(T.ind, s.ind);
     T.view = T.rng ? { from: T.rng === 'Alt' ? 0 : Date.now() - RNG[T.rng][0] } : { bars: 150 }; } catch (e) { /* ingen lagring */ }
-  const save = () => { try { localStorage.setItem('ms-term2', JSON.stringify({ tf: T.tf, rng: T.rng, log: T.log, sub: T.sub, ind: T.ind })); } catch (e) { /* ignorer */ } };
+  const save = () => { try { localStorage.setItem('ms-term2', JSON.stringify({ tf: T.tf, rng: T.rng, log: T.log, pctm: T.pctm, sub: T.sub, ind: T.ind })); } catch (e) { /* ignorer */ } };
 
   // ---------------------------------------------------------------- hjelpere
   const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
@@ -149,7 +149,7 @@
     const LW = window.LightweightCharts; if (!LW) return null;
     const opt = () => ({ autoSize: true, localization: { locale: 'nb-NO', dateFormat: 'dd.MM.yy' }, layout: { background: { type: 'solid', color: css('--panel') }, textColor: css('--muted'), fontFamily: getComputedStyle(document.body).fontFamily, fontSize: 13 },
       grid: { vertLines: { color: css('--grid') }, horzLines: { color: css('--grid') } }, rightPriceScale: { borderColor: css('--line') },
-      timeScale: { borderColor: css('--line'), timeVisible: true, secondsVisible: false, rightOffset: 6 }, crosshair: { mode: 0 }, handleScale: { axisPressedMouseMove: true } });
+      timeScale: { borderColor: css('--line'), timeVisible: true, secondsVisible: false, rightOffset: 10 }, crosshair: { mode: 0, vertLine: { color: css('--axis'), style: 3, labelBackgroundColor: css('--fg') }, horzLine: { color: css('--axis'), style: 3, labelBackgroundColor: css('--fg') } }, handleScale: { axisPressedMouseMove: true } });
     const ch = LW.createChart(document.getElementById('tm-chart'), opt()), sc = LW.createChart(document.getElementById('tm-sub'), Object.assign(opt(), { timeScale: { visible: false } }));
     const up = css('--up'), dn = css('--down'), ln = (color, w = 2, style = 0) => ch.addLineSeries({ color, lineWidth: w, lineStyle: style, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
     const S = { candle: ch.addCandlestickSeries({ upColor: up, downColor: dn, wickUpColor: up, wickDownColor: dn, borderVisible: false }),
@@ -159,10 +159,12 @@
       o1: sc.addLineSeries({ color: css('--blue'), lineWidth: 1, priceLineVisible: false }), o2: sc.addLineSeries({ color: css('--purple'), lineWidth: 1, priceLineVisible: false, lastValueVisible: false }), oh: sc.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false }) };
     ch.priceScale('vol').applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
     let lock = false; const sync = (a, b) => a.timeScale().subscribeVisibleLogicalRangeChange(r => { if (lock || !r) return; lock = true; b.timeScale().setVisibleLogicalRange(r); lock = false; }); sync(ch, sc); sync(sc, ch);
-    ch.subscribeCrosshairMove(p => { const C = T.chart; if (!C || !C.B) return; const b = p && p.time != null ? C.byT.get(p.time) : null; hover(b || C.B[C.B.length - 1], !b); });
+    ch.subscribeCrosshairMove(p => { const C = T.chart; if (!C || !C.B) return; const b = p && p.time != null ? C.byT.get(p.time) : null; hover(b || C.B[C.B.length - 1], !b, b ? p.time : null); });
     const host = document.getElementById('tm-chart'); host.style.position = 'relative'; const layer = el('div', 'zlayer'); host.append(layer);
     ch.timeScale().subscribeVisibleLogicalRangeChange(r => { requestAnimationFrame(placeZones); if (r && r.from < 15) older(); }); if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(placeZones)).observe(host);
-    ch.priceScale('right').applyOptions({ mode: T.log ? 1 : 0 });
+    ch.priceScale('right').applyOptions({ mode: T.pctm ? 2 : T.log ? 1 : 0 });
+    host.addEventListener('pointerup', () => setTimeout(() => { const a = document.querySelector('#tm-range button[title^="Automatisk"]'); if (a) a.setAttribute('aria-pressed', ch.priceScale('right').options().autoScale ? 'true' : 'false'); }, 50));
+    document.addEventListener('fullscreenchange', () => { const f = document.querySelector('#tm-tools .fsb'); if (f) f.setAttribute('aria-pressed', document.fullscreenElement ? 'true' : 'false'); });
     const C = { ch, sc, S, lines: [], osc: [], k: null, B: null, byT: new Map(), layer, zones: [] };
     C.D = window.DRAW ? DRAW.create({ ch, series: S.candle, host, bars: () => C.B, step: () => MS[T.tf], key: () => T.sym, onScale: () => placeZones() }) : null;
     return C;
@@ -174,12 +176,22 @@
   function applyView() { const C = T.chart, c = T.kl[key(T.sym, T.tf)]; if (!C || !c || !c.B) return; const B = c.B, n = B.length, v = T.view || { bars: 150 };
     if (v.from != null && B[0].t > v.from && !c.done && (v.tries = (v.tries || 0) + 1) <= 6) { loadOlder(T.sym, T.tf).then(k => { if (k) paint(); applyView(); }); return; }
     let from = v.from != null ? B.findIndex(b => b.t >= v.from) : n - v.bars; if (from < 0) from = n - 30; C.ch.timeScale().setVisibleLogicalRange({ from: Math.max(0, from) - 0.5, to: n + 3 }); }
-  function hover(b, last) { const box = document.getElementById('tm-hover'); if (!box || !b) return; const tf = T.tf;
-    const when = tf === '1d' ? dmy(b.t) : tf === '1w' ? 'Uke fra ' + dmy(b.t) : tf === '1M' ? my(b.t) : new Date(b.t).toLocaleString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-    box.replaceChildren(document.createTextNode(`${when}  Å ${price(b.o)}  H ${price(b.h)}  L ${price(b.l)}  ${last ? 'Nå' : 'S'} ${price(b.c)} `), el('span', cls(b.c - b.o), pct(b.c / b.o - 1))); }
+  // forklaringen oppå grafen (som i TradingView): symbol, tidsramme og OHLC for lyset under pekeren, og verdien til hver indikator
+  const LEG = [['e200', '200-dagerslinja', '--orange'], ['s300', '300-dagerslinja', '--orange'], ['e50', '50-dagerslinja', '--blue'], ['e20', '20-dagerslinja', '--purple'], ['w200', '200-ukerslinja', '#d6336c'], ['w50', '50-ukerslinja', '--fg'], ['vwap', 'VWAP', '--axis'], ['bb', 'Bollinger', '--axis']];
+  function hover(b, last, time) { const box = document.getElementById('tm-hover'), C = T.chart; if (!box || !b || !C) return; const tf = T.tf, n = names()[T.sym] || T.sym;
+    const when = tf === '1d' ? dmy(b.t) : tf === '1w' ? 'uke fra ' + dmy(b.t) : tf === '1M' ? my(b.t) : new Date(b.t).toLocaleString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const r1 = el('div', 'r'), c = b.c >= b.o ? 'up' : 'down', v = (k, x) => { const s2 = el('span'); s2.append(el('span', 'muted', k), el('b', c, price(x).replace(' $', ''))); return s2; };
+    r1.append(el('b', null, `${n} · ${TFL[tf][0]} · Binance`), v('Å', b.o), v('H', b.h), v('L', b.l), v(last ? 'S' : 'S', b.c), el('b', c, `${b.c >= b.o ? '+' : '−'}${price(Math.abs(b.c - b.o)).replace(' $', '')} (${pct(b.c / b.o - 1)})`), el('span', 'muted r1d', when));
+    const rows = [r1], tm = time != null ? time : ts(b.t), tr = trend(T.sym);
+    for (const [k, nm, col] of LEG) { if (!T.ind[k]) continue; let val = null;
+      if (k === 'bb') { const u = C.val && C.val.bbU && C.val.bbU.get(tm), l = C.val && C.val.bbL && C.val.bbL.get(tm); if (u == null) continue; val = `${price(l).replace(' $', '')} – ${price(u).replace(' $', '')}`; }
+      else { const m = C.val && C.val[k]; val = m && m.size ? m.get(tm) : k === 'e200' && tr ? tr.e200 : k === 'w200' && tr ? tr.w200 : null; if (val == null) continue; val = price(val).replace(' $', ''); }
+      const r = el('div', 'r'), cc = col.startsWith('--') ? css(col) : col, nm2 = el('span', null, nm); nm2.style.color = cc; const x = el('button', 'x', '×'); x.type = 'button'; x.title = `Skjul ${nm}`; x.setAttribute('aria-label', `Skjul ${nm}`);
+      x.addEventListener('click', () => { T.ind[k] = false; save(); T.menu = null; controls(); paint(); }); r.append(nm2, el('b', null, val), x); rows.push(r); }
+    box.replaceChildren(...rows); }
   const line = (B, a) => B.map((b, i) => a[i] == null ? { time: ts(b.t) } : { time: ts(b.t), value: a[i] });
   function paint(full) {
-    const C = T.chart; if (!C || !T.sym) return; const tf = T.tf, c = T.kl[key(T.sym, tf)]; if (!c || !c.B) return;
+    const C = T.chart; if (!C || !T.sym) return; const tf = T.tf, c = T.kl[key(T.sym, tf)]; if (!c || !c.B) { if (C.B && C.k !== key(T.sym, tf)) { Object.values(C.S).forEach(x => { try { x.setData([]); } catch (e) { /* ignorer */ } }); C.lines.forEach(l => C.S.candle.removePriceLine(l)); C.lines = []; C.zones = []; C.B = null; C.layer.replaceChildren(); } return; }
     const B = c.B, k = key(T.sym, tf), cl = B.map(b => b.c), up = css('--up'), dn = css('--down'), show = C.visN || 150;
     // dagsverdier (f.eks. 200-dagerslinja) på uke- og månedsgraf: verdien fra siste dag i hvert lys
     const fromDaily = (DB, arr) => { const out = new Array(B.length).fill(null); let j = 0; for (let i = 0; i < B.length; i++) { const end = i + 1 < B.length ? B[i + 1].t : Infinity; while (j + 1 < DB.length && DB[j + 1].t < end) j++; if (DB[j] && DB[j].t < end && DB[j].t >= B[i].t) out[i] = arr[j]; } return out; };
@@ -191,9 +203,10 @@
     // 200-dagerslinja: regnes alltid på dagslukk. På dagsgraf som linje, på ukegraf der dagsdata finnes, ellers som vannrett strek.
     const D = T.kl[key(T.sym, '1d')], tr = trend(T.sym); C.lines.forEach(l => C.S.candle.removePriceLine(l)); C.lines = [];
     const pl = (p, color, title, style = 2, w = 2) => { if (p == null || !isFinite(p)) return; C.lines.push(C.S.candle.createPriceLine({ price: p, color, lineWidth: w, lineStyle: style, axisLabelVisible: true, title })); };
-    if (tf === '1d') C.S.e200.setData(line(B, RG.ema(cl, 200)));
+    if (!T.ind.e200) C.S.e200.setData([]);
+    else if (tf === '1d') C.S.e200.setData(line(B, RG.ema(cl, 200)));
     else if (big && D && D.B) C.S.e200.setData(line(B, fromDaily(D.B, RG.ema(D.B.map(b => b.c), 200))));
-    else { C.S.e200.setData([]); if (tr) pl(tr.e200, css('--orange'), '200-dagerslinja', 0, 2); }
+    else { C.S.e200.setData([]); if (tr && T.ind.e200) pl(tr.e200, css('--orange'), '200-dagerslinja', 0, 2); }
     const isD = tf === '1d'; C.S.e50.setData(T.ind.e50 && isD ? line(B, RG.ema(cl, 50)) : []); C.S.e20.setData(T.ind.e20 && isD ? line(B, RG.ema(cl, 20)) : []);
     // 50-ukers og 300-dagers: linjer på dags- og ukegraf, vannrette streker ellers
     { const W2 = w200of(T.sym); if (T.ind.w200 && isD && W2) C.S.w200.setData(B.map(b => { const v = W2.at(b.t); return v == null ? { time: ts(b.t) } : { time: ts(b.t), value: v }; }));
@@ -229,7 +242,8 @@
     else if (T.sub === 'atr') { const A = RG.atr(B); C.S.o1.setData(line(B, A.map((v, i) => v == null ? null : v / B[i].c * 100))); C.S.o2.setData([]); C.S.oh.setData(B.map(b => ({ time: ts(b.t) }))); }
     else { C.S.o1.setData([]); C.S.o2.setData([]); C.S.oh.setData([]); }
     C.S.candle.setMarkers(T.ind.mk ? markers(B) : []);
-    const first = C.k !== k; C.k = k; C.B = B; if (first) applyView(); hover(B[B.length - 1], true); legend(tf); if (C.D) C.D.render();
+    C.val = {}; for (const kk of ['e200', 's300', 'e50', 'e20', 'w200', 'w50', 'vwap', 'bbU', 'bbL']) { try { C.val[kk] = new Map(C.S[kk].data().filter(d => d.value != null).map(d => [d.time, d.value])); } catch (x) { /* ingen data */ } }
+    const first = C.k !== k; C.k = k; C.B = B; if (first) applyView(); hover(B[B.length - 1], true); if (C.D) C.D.render();
   }
   function placeZones() { const C = T.chart; if (!C || !C.layer) return; const w = C.ch.timeScale().width();
     C.layer.replaceChildren(...overlays(C, w), ...C.zones.map(z => { const y1 = C.S.candle.priceToCoordinate(z.hi), y2 = C.S.candle.priceToCoordinate(z.lo); if (y1 == null || y2 == null) return null;
@@ -276,24 +290,11 @@
   function markers(B) { const s = RG.biasSeries(B, closedEnd(B)), out = []; let prev = null;
     for (const x of s) { if (x.b !== prev && prev != null && x.b !== 'neutral') out.push({ time: ts(x.t), position: x.b === 'long' ? 'belowBar' : 'aboveBar', color: x.b === 'long' ? css('--up') : css('--down'), shape: x.b === 'long' ? 'arrowUp' : 'arrowDown', text: '' }); prev = x.b; }
     return out; }
-  function legend(tf) {
-    const box = document.getElementById('tm-legend'), it = (color, txt, style) => { const s = el('span'); const i = el('i'); i.style.borderTopColor = color; if (style) i.style.borderTopStyle = style; s.append(i, document.createTextNode(txt)); return s; };
-    const sw = (c2, txt) => { const s2 = el('span'); const b2 = el('b', 'zsw ' + c2); s2.append(b2, document.createTextNode(txt)); return s2; };
-    const a = [it(css('--orange'), '200-dagerslinja')];
-    if (T.ind.lv) a.push(sw('up', 'Støtte'), sw('down', 'Motstand'));
-    if (T.ind.tl) a.push(it(css('--up'), 'Trendlinjer'));
-    if (T.ind.w200) a.push(it('#d6336c', '200-ukerslinja'));
-    if (T.ind.w200z) a.push(sw('w2z', '200W-soner'));
-    if (T.ind.halv) a.push(it('#a16207', 'Halvering ±540 d', 'dashed'));
-    if (T.ind.w50) a.push(it(css('--fg'), '50-ukerslinja', 'dashed')); if (T.ind.s300) a.push(it(css('--orange'), '300-dagerslinja', 'dotted'));
-    if (T.ind.e50) a.push(it(css('--blue'), '50-dagerslinja')); if (T.ind.e20) a.push(it(css('--purple'), '20-dagerslinja'));
-    box.replaceChildren(...a);
-  }
   function status() {
     const box = document.getElementById('tm-status'); const tf = T.tf, c = T.kl[key(T.sym, tf)]; if (!box || !c) return;
     if (!c.B) { box.className = 'down small'; box.textContent = c.err ? 'Kursdata er ikke tilgjengelig akkurat nå (Binance svarte ikke). Prøver igjen automatisk.' : 'Henter kurser …'; return; }
     const late = Date.now() - c.at > 5 * 6e4, gaps = RG.gaps(c.B, MS[tf] * (tf === '1M' ? 1.1 : 1));
-    let t = `Binance · kl. ${hm(c.at)} · norsk tid`;
+    let t = `${hm(c.at)} (norsk tid)`;
     if (c.err) t += ` · ⚠ siste oppdatering feilet`; else if (late) t += ' · ⚠ kan være forsinket';
     if (gaps.length) t += ` · ⚠ ${gaps.length} hull i dataene`;
     box.className = (c.err || late || gaps.length ? 'warn' : 'muted') + ' small'; box.textContent = t;
@@ -365,17 +366,24 @@
     document.addEventListener('keydown', e => { if (e.key === 'Escape') p.hidden = true; });
     dd.append(b, p); return dd;
   }
+  const sep = () => el('span', 'tsep');
+  function fullscreen() { const card = document.getElementById('tm-detail'); if (document.fullscreenElement) document.exitFullscreen(); else if (card.requestFullscreen) card.requestFullscreen().catch(() => card.classList.toggle('fs')); else card.classList.toggle('fs'); }
+  function scaleMode(m) { if (m === 'log') { T.log = !T.log; if (T.log) T.pctm = false; } if (m === 'pct') { T.pctm = !T.pctm; if (T.pctm) T.log = false; } save(); if (T.chart) T.chart.ch.priceScale('right').applyOptions({ mode: T.pctm ? 2 : T.log ? 1 : 0 }); controls(); }
   function controls() {
     const bar = document.getElementById('tm-tools'); if (!bar) return;
     const g1 = el('div', 'tgroup'); g1.setAttribute('role', 'group'); g1.setAttribute('aria-label', 'Tidsramme for hvert lys');
     Object.entries(TFL).forEach(([k, [s2, l]]) => g1.append(btn(s2, k === T.tf, () => setTf(k), `Hvert lys = ${l}`)));
     if (!T.menu) T.menu = indMenu();
-    bar.replaceChildren(g1, ...(T.chart && T.chart.D ? [T.chart.D.toolbar()] : []), T.menu);
+    const fs = btn('⛶', null, fullscreen, 'Fullskjerm', 'fsb');
+    bar.replaceChildren(g1, sep(), T.menu, el('span', 'grow'), fs);
+    const dr = document.getElementById('tm-draw'); if (dr && T.chart && T.chart.D && !dr.childElementCount) dr.append(T.chart.D.toolbar(true));
     const rb = document.getElementById('tm-range'); if (!rb) return; const g2 = el('div', 'tgroup'); g2.setAttribute('role', 'group'); g2.setAttribute('aria-label', 'Periode');
     Object.keys(RNG).forEach(r => g2.append(btn(r, r === T.rng, () => setRng(r), r === 'Alt' ? 'Hele historikken' : `Vis siste ${r}`)));
-    const g3 = el('div', 'tgroup'); g3.append(btn('log', T.log, () => { T.log = !T.log; save(); if (T.chart) T.chart.ch.priceScale('right').applyOptions({ mode: T.log ? 1 : 0 }); controls(); }, 'Loggskala: like store prosentbevegelser er like høye'),
-      btn('⤢', null, () => { if (T.chart) { T.chart.ch.priceScale('right').applyOptions({ autoScale: true }); T.view = T.rng ? { from: T.rng === 'Alt' ? 0 : Date.now() - RNG[T.rng][0] } : { bars: 150 }; applyView(); } }, 'Tilbakestill utsnittet'));
-    rb.replaceChildren(g2, g3);
+    const auto = T.chart ? T.chart.ch.priceScale('right').options().autoScale : true;
+    const g3 = el('div', 'tgroup'); g3.append(btn('%', T.pctm, () => scaleMode('pct'), 'Prosentskala: endring fra første synlige lys'), btn('log', T.log, () => scaleMode('log'), 'Loggskala: like store prosentbevegelser er like høye'),
+      btn('auto', auto, () => { if (T.chart) { T.chart.ch.priceScale('right').applyOptions({ autoScale: true }); controls(); } }, 'Automatisk prisskala (tilpass høyden)'),
+      btn('⤢', null, () => { if (T.chart) { T.chart.ch.priceScale('right').applyOptions({ autoScale: true }); T.view = T.rng ? { from: T.rng === 'Alt' ? 0 : Date.now() - RNG[T.rng][0] } : { bars: 150 }; applyView(); controls(); } }, 'Tilbakestill utsnittet'));
+    rb.replaceChildren(g2, sep(), g3);
   }
 
   // ---------------------------------------------------------------- inngang
@@ -384,7 +392,7 @@
     document.getElementById('tm-title').textContent = `${n} · ${TFL[tf][0]}`;
     const L = live(T.sym), ph = document.getElementById('tm-price');
     ph.replaceChildren(...(L && L.p ? [el('b', null, price(L.p) + ' '), el('span', cls(L.chg), pct(L.chg / 100) + ' siste døgn')] : [el('span', 'muted', 'Pris ikke tilgjengelig')]));
-    if (reload) { if (T.chart) T.chart.k = null; status(); loadK(T.sym, tf, true).then(() => { if (tf === T.tf) { paint(true); status(); } }); if (tf !== '1d') loadK(T.sym, '1d').then(() => { paint(); drawExplain(); drawLevels(); }); if (tf !== '1w') loadK(T.sym, '1w').then(() => { paint(); drawLevels(); });
+    if (reload) { if (T.chart) { T.chart.k = null; T.chart.ch.priceScale('right').applyOptions({ autoScale: true }); } status(); loadK(T.sym, tf, true).then(() => { if (tf === T.tf) { paint(true); status(); } }); if (tf !== '1d') loadK(T.sym, '1d').then(() => { paint(); drawExplain(); drawLevels(); }); if (tf !== '1w') loadK(T.sym, '1w').then(() => { paint(); drawLevels(); });
       if (T.chart && T.chart.D) T.chart.D.refresh(); }
     else { paint(); status(); }
     drawExplain(); drawLevels(); poll();
