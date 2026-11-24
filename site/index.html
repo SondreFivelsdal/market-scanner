@@ -72,7 +72,51 @@ button:focus-visible, [tabindex]:focus-visible, summary:focus-visible { outline:
 .zsw.w2z { background: linear-gradient(90deg, #a855f7, #3b82f6, #22c55e, #eab308, #f97316, #ef4444); opacity: .6; }
 .zsw { display: inline-block; width: 18px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
 .zsw.up { background: color-mix(in srgb, var(--up) 30%, transparent); } .zsw.down { background: color-mix(in srgb, var(--down) 30%, transparent); }
-.chart { height: clamp(300px, 50vh, 480px); min-width: 0; }
+.chart { height: clamp(320px, 56vh, 560px); min-width: 0; }
+/* verktøylinje (tidsramme, tegneverktøy, indikatorer) og periodelinje – som i TradingView */
+.tbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.tbar.bottom { justify-content: space-between; border-top: 1px solid var(--line); padding-top: 8px; }
+.tgroup { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.tb { font: inherit; font-size: .86rem; font-weight: 600; color: var(--muted); background: none; border: 0; border-radius: 6px; padding: 5px 9px; min-width: 32px; min-height: 30px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.tb:hover { background: var(--soft); color: var(--fg); }
+.tb[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.tb.ic { padding: 5px 7px; }
+.dd { position: relative; }
+.ddp { position: absolute; top: calc(100% + 6px); z-index: 30; width: min(320px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.18); padding: 12px 14px; display: grid; gap: 8px; }
+.ddl { display: grid; gap: 4px; font-size: .92rem; } .ddl label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.seg.sm button { font-size: .85rem; padding: 4px 10px; }
+.chip.sm { font-size: .85rem; padding: 3px 10px; }
+.dlayer { position: absolute; left: 0; top: 0; right: 0; bottom: 0; pointer-events: none; z-index: 3; }
+.dlayer.on { pointer-events: auto; cursor: crosshair; touch-action: none; }
+.dsvg { position: absolute; left: 0; top: 0; overflow: visible; }
+.dshape .dhit { pointer-events: stroke; cursor: move; }
+.dshape .dhandle { pointer-events: all; cursor: grab; fill: var(--panel); stroke: var(--blue); stroke-width: 2; }
+.dshape.sel line { filter: drop-shadow(0 0 2px var(--blue)); }
+.dlab { font-size: 11px; font-variant-numeric: tabular-nums; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; }
+/* viktige nivåer: én linje per nivå */
+.lvs { display: grid; }
+.lv { border-top: 1px solid var(--line); } .lvs > :first-child { border-top: 0; }
+.lv > summary, .lv.now { list-style: none; display: grid; grid-template-columns: 14px minmax(7rem, 1.6fr) minmax(5.5rem, 1fr) 4.5rem 3.6rem; gap: 10px; align-items: center; padding: 8px 4px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.lv > summary::-webkit-details-marker { display: none; }
+.lv > summary:hover { background: var(--soft); }
+.lv .p { font-weight: 650; text-align: right; } .lv .ds { text-align: right; font-size: .88rem; }
+.lv > p { padding: 0 4px 10px 28px; color: var(--muted); }
+.lv.now { background: var(--soft); border-radius: 8px; cursor: default; font-weight: 650; }
+.lv.now .dot { background: var(--blue); }
+.str { display: inline-flex; gap: 3px; justify-content: flex-end; } .str i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); } .str i.on { background: var(--fg); }
+/* teknisk analyse og fear & greed */
+.taitems { display: grid; gap: 0; }
+.taitem { display: grid; gap: 4px; padding: 12px 0; border-top: 1px solid var(--line); } .taitem:first-child { border-top: 0; padding-top: 0; }
+.fngtop { grid-template-columns: minmax(220px, 280px) 1fr; align-items: center; }
+svg.gauge { width: 100%; max-width: 280px; height: auto; }
+.evleg { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.evleg button { font: inherit; font-size: .86rem; display: inline-flex; align-items: center; gap: 6px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+.evleg button i { display: inline-block; width: 16px; height: 0; border-top: 3px solid; }
+.evleg button[aria-pressed="false"] { opacity: .45; }
+.evleg button.solo { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
+.like { display: grid; gap: 6px; }
+.likerow { display: grid; grid-template-columns: 1fr auto auto auto; gap: 4px 14px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; background: var(--panel); font: inherit; color: inherit; text-align: left; width: 100%; font-variant-numeric: tabular-nums; }
+.likerow:hover { border-color: var(--axis); } .likerow[aria-pressed="true"] { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
 .sub { height: 120px; min-width: 0; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .88rem; color: var(--muted); }
 .legend i { display: inline-block; width: 18px; height: 0; border-top: 3px solid; vertical-align: middle; margin-right: 6px; }
@@ -158,6 +202,7 @@ button.chip { font: inherit; font-size: .9rem; background: var(--panel); color: 
 .evchart .tip { display: grid; gap: 2px; }
 tr.evrow { cursor: pointer; } tr.evrow:hover td { background: var(--soft); } tr.evrow.on td { background: color-mix(in srgb, var(--blue) 14%, transparent); } tr.evrow.cur td { background: color-mix(in srgb, var(--blue) 8%, transparent); cursor: default; }
 footer a { color: inherit; }
+@media (max-width: 640px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .kpi { padding: 10px 12px; } .kpi .v { font-size: 1.15rem; } .fngtop { grid-template-columns: 1fr; } .lv > summary, .lv.now { grid-template-columns: 12px 1fr auto 3.6rem; } .lv .str { display: none; } .lv > p { padding-left: 4px; } .likerow { grid-template-columns: 1fr auto; } .tb { min-height: 34px; } }
 @media (max-width: 640px) { details.mrow > summary { grid-template-columns: 1fr; gap: 2px; } details.mrow > summary .val { padding-left: 22px; font-size: .92rem; } details.mrow > summary svg.spark { display: none; } details.mrow > .in { padding-left: 0; } table.t.compact td.l { min-width: 6rem; } table.t.compact td, table.t.compact th { padding: 8px 4px; font-size: .86rem; } .card { padding: 14px; } .lvl { grid-template-columns: 1fr; } .coin { grid-template-columns: 1fr auto; } .coin .ath { text-align: left; } .rr { grid-template-columns: 1fr; gap: 4px; } .case { grid-template-columns: 1fr; } .case .stack { text-align: left !important; } .case .res { text-align: left; } #app { padding-inline: 12px; } }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
@@ -174,6 +219,8 @@ footer a { color: inherit; }
 
   <nav class="tabs" role="tablist" aria-label="Sider" id="faner">
     <button role="tab" data-tab="terminal" id="tab-terminal">Oversikt</button>
+    <button role="tab" data-tab="ta" id="tab-ta">Teknisk analyse</button>
+    <button role="tab" data-tab="fng" id="tab-fng">Fear &amp; Greed</button>
     <button role="tab" data-tab="makro" id="tab-makro">Makrobildet</button>
     <button role="tab" data-tab="syklus" id="tab-syklus">Syklus</button>
     <button role="tab" data-tab="hendelser" id="tab-hendelser">Hva skjedde etter?</button>
@@ -188,30 +235,38 @@ footer a { color: inherit; }
     </div>
     <div class="card" id="tm-detail">
       <div class="row"><h2 id="tm-title">–</h2><span id="tm-price"></span></div>
-      <div class="seg" id="tm-period" role="group" aria-label="Periode"></div>
+      <div class="tbar" id="tm-tools"></div>
       <div class="hover" id="tm-hover"></div>
       <div class="chart" id="tm-chart"></div>
       <div class="sub" id="tm-sub" hidden></div>
+      <div class="tbar bottom" id="tm-range"></div>
       <div class="legend" id="tm-legend"></div>
       <p class="muted small" id="tm-status">–</p>
+    </div>
+    <div class="card" id="tm-levels-card">
+      <div class="row"><h2 id="tm-lv-title">Viktige nivåer</h2><span class="muted small">Trykk for hvorfor · pek for å se i grafen</span></div>
+      <div class="lvs" id="tm-levels"></div>
     </div>
     <div class="card">
       <h2 id="tm-ex-title">Hva betyr dette?</h2>
       <div class="explain" id="tm-explain"></div>
     </div>
-    <div class="card" id="tm-levels-card">
-      <div class="stack" style="gap:4px"><h2 id="tm-lv-title">Viktige nivåer – og hvorfor de betyr noe</h2>
-      <p class="muted">Fra øverst til nederst. Et nivå er viktig når mange kjøpere eller selgere har reagert der før – da ligger det ofte ordre og venter der igjen.</p></div>
-      <div class="lvls" id="tm-levels"></div>
+  </section>
+
+  <section id="ta" role="tabpanel" aria-labelledby="tab-ta" class="stack" style="gap:20px" hidden>
+    <div class="stack">
+      <h2>Teknisk analyse</h2>
+      <p class="muted">Strukturer funnet med faste regler: trend, Wyckoff, mønstre og divergens – og hvordan det gikk de tidligere gangene.</p>
     </div>
-    <details class="more" id="tm-adv">
-      <summary>For viderekomne: flere linjer og indikatorer</summary>
-      <div class="in">
-        <div class="chips" id="tm-ind"></div>
-        <div class="stack"><span class="muted">Ekstra panel under grafen</span><div class="seg" id="tm-subsel" role="group" aria-label="Ekstra panel"></div></div>
-        <div class="tw" id="tm-tf"></div>
-      </div>
-    </details>
+    <div class="stack" style="gap:20px" id="ta-in"><p class="muted">Henter …</p></div>
+  </section>
+
+  <section id="fng" role="tabpanel" aria-labelledby="tab-fng" class="stack" style="gap:20px" hidden>
+    <div class="stack">
+      <h2>Fear &amp; Greed – stemningen i kryptomarkedet</h2>
+      <p class="muted">0 = ekstrem frykt, 100 = ekstrem grådighet.</p>
+    </div>
+    <div class="stack" style="gap:20px" id="fng-in"><p class="muted">Henter …</p></div>
   </section>
 
   <section id="makro" role="tabpanel" aria-labelledby="tab-makro" class="stack" style="gap:20px" hidden>
@@ -258,7 +313,12 @@ footer a { color: inherit; }
     <p>Dette er informasjon, ikke kjøps- eller salgsråd.</p>
   </footer>
 </div>
+<script src="klines.js"></script>
+<script src="draw.js"></script>
+<script src="ta.js"></script>
 <script src="terminal.js"></script>
+<script src="ta-ui.js"></script>
+<script src="fng-ui.js"></script>
 <script src="hist-ui.js"></script>
 <script src="macro-ui.js"></script>
 <script src="events-ui.js"></script>

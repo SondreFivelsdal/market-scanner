@@ -4,13 +4,18 @@
 (() => {
   'use strict';
   const BIN = 'https://data-api.binance.vision/api/v3/';
-  const MS = { '15m': 9e5, '1h': 36e5, '4h': 144e5, '1d': 864e5, '1w': 6048e5 };
-  const PER = { '1D': ['1 dag', '15m', 96], '1U': ['1 uke', '1h', 168], '1M': ['1 måned', '4h', 180], '3M': ['3 måneder', '1d', 92], '1Å': ['1 år', '1d', 366], '5Å': ['5 år', '1w', 262] };
-  const POLL = { '15m': 15e3, '1h': 3e4, '4h': 6e4, '1d': 6e4, '1w': 3e5 };
+  const MS = { '15m': 9e5, '1h': 36e5, '4h': 144e5, '1d': 864e5, '1w': 6048e5, '1M': 2592e6 };
+  // tidsramme (hvert lys) og periode (hvor mye som vises) velges hver for seg, som i TradingView
+  const TFL = { '15m': ['15m', '15 minutter'], '1h': ['1t', '1 time'], '4h': ['4t', '4 timer'], '1d': ['1D', '1 dag'], '1w': ['1U', '1 uke'], '1M': ['1M', '1 måned'] };
+  const RNG = { '1D': [864e5, '15m'], '5D': [5 * 864e5, '1h'], '1M': [30 * 864e5, '4h'], '3M': [91 * 864e5, '1d'], '1Å': [365 * 864e5, '1d'], '5Å': [1826 * 864e5, '1w'], Alt: [Infinity, '1w'] };
+  const OLDPER = { '1D': '1D', '1U': '5D', '1M': '1M', '3M': '3M', '1Å': '1Å', '5Å': '5Å' };
+  const POLL = { '15m': 15e3, '1h': 3e4, '4h': 6e4, '1d': 6e4, '1w': 3e5, '1M': 3e5 };
   const IND = { lv: ['Støtte og motstand', true], tl: ['Trendlinjer', true], vol: ['Volum', true], w200: ['200-ukerslinja', true], w200z: ['200W-soner (Fire sale → Very expensive)', true], halv: ['Bitcoin-halvering ±540 d', true], w50: ['50-ukerslinja', true], s300: ['300-dagerslinja', false], e50: ['50-dagerslinja', false], e20: ['20-dagerslinja', false], vwap: ['VWAP (dagssnitt)', false], bb: ['Bollinger-bånd', false], mk: ['Regelskifter (piler)', false] };
-  const T = { sym: null, per: '3M', sub: 'none', ind: Object.fromEntries(Object.entries(IND).map(([k, v]) => [k, v[1]])), kl: {}, glob: null, fng: null, built: false, chart: null, timer: null, dayAt: 0 };
-  try { const s = JSON.parse(localStorage.getItem('ms-term2') || '{}'); if (s.ind && s.ind.tl == null) s.ind.tl = true; if (s.per && PER[s.per]) T.per = s.per; if (s.sub) T.sub = s.sub; if (s.ind) Object.assign(T.ind, s.ind); } catch (e) { /* ingen lagring */ }
-  const save = () => { try { localStorage.setItem('ms-term2', JSON.stringify({ per: T.per, sub: T.sub, ind: T.ind })); } catch (e) { /* ignorer */ } };
+  const T = { sym: null, tf: '1d', rng: '3M', log: false, view: { from: Date.now() - RNG['3M'][0] }, sub: 'none', ind: Object.fromEntries(Object.entries(IND).map(([k, v]) => [k, v[1]])), kl: {}, glob: null, fng: null, built: false, chart: null, timer: null, dayAt: 0 };
+  try { const s = JSON.parse(localStorage.getItem('ms-term2') || '{}'); if (s.ind && s.ind.tl == null) s.ind.tl = true; if (s.per && OLDPER[s.per] && !s.rng) { T.rng = OLDPER[s.per]; T.tf = RNG[T.rng][1]; }
+    if (s.tf && MS[s.tf]) T.tf = s.tf; if (s.rng === null || RNG[s.rng]) T.rng = s.rng; if (s.log != null) T.log = !!s.log; if (s.sub) T.sub = s.sub; if (s.ind) Object.assign(T.ind, s.ind);
+    T.view = T.rng ? { from: T.rng === 'Alt' ? 0 : Date.now() - RNG[T.rng][0] } : { bars: 150 }; } catch (e) { /* ingen lagring */ }
+  const save = () => { try { localStorage.setItem('ms-term2', JSON.stringify({ tf: T.tf, rng: T.rng, log: T.log, sub: T.sub, ind: T.ind })); } catch (e) { /* ignorer */ } };
 
   // ---------------------------------------------------------------- hjelpere
   const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
@@ -37,7 +42,8 @@
   function loadK(sym, tf, force) {
     const k = key(sym, tf), c = T.kl[k] || (T.kl[k] = { B: null, at: 0, err: null, errAt: 0, p: null });
     if (c.p) return c.p; if (!force && c.B && Date.now() - c.at < 2e4) return Promise.resolve(c);
-    c.p = getJSON(`${BIN}klines?symbol=${sym}USDT&interval=${tf}&limit=${tf === '1d' ? 1000 : 500}`).then(a => { if (!Array.isArray(a) || !a.length) throw new Error('tomt svar'); c.B = mapK(a); c.at = Date.now(); c.err = null; return c; })
+    c.p = getJSON(`${BIN}klines?symbol=${sym}USDT&interval=${tf}&limit=1000`).then(a => { if (!Array.isArray(a) || !a.length) throw new Error('tomt svar'); const NB = mapK(a);
+      c.B = c.B && c.B.length && c.B[0].t < NB[0].t ? c.B.filter(b => b.t < NB[0].t).concat(NB) : NB; if (a.length < 1000) c.done = true; c.at = Date.now(); c.err = null; return c; })
       .catch(e => { c.err = String(e.message || e); c.errAt = Date.now(); return c; }).finally(() => { c.p = null; });
     return c.p;
   }
@@ -46,6 +52,13 @@
     c.p = getJSON(`${BIN}klines?symbol=${sym}USDT&interval=${tf}&limit=3`).then(a => { for (const b of mapK(a)) { const L = c.B[c.B.length - 1]; if (b.t === L.t) c.B[c.B.length - 1] = b; else if (b.t > L.t) c.B.push(b); } c.at = Date.now(); c.err = null; return c; })
       .catch(e => { c.err = String(e.message || e); c.errAt = Date.now(); return c; }).finally(() => { c.p = null; });
     return c.p;
+  }
+  // eldre lys: én side à 1000 før det første vi har. Returnerer antall nye lys (0 = ingen flere).
+  function loadOlder(sym, tf) {
+    const c = T.kl[key(sym, tf)]; if (!c || !c.B || !c.B.length || c.done) return Promise.resolve(0); if (c.op) return c.op;
+    c.op = getJSON(`${BIN}klines?symbol=${sym}USDT&interval=${tf}&limit=1000&endTime=${c.B[0].t - 1}`).then(a => { const NB = Array.isArray(a) ? mapK(a).filter(b => b.t < c.B[0].t) : [];
+      if (!NB.length || a.length < 1000) c.done = true; if (NB.length) c.B = NB.concat(c.B); return NB.length; }).catch(() => 0).finally(() => { c.op = null; });
+    return c.op;
   }
   const closedEnd = B => { let e = B.length - 1; while (e >= 0 && B[e].ct > Date.now()) e--; return e; };
   // 50-ukerslinja regnet fra dagslukk: snittet av de siste 50 fullførte ukelukkene (uke = mandag–søndag UTC). Verdien for en dag
@@ -64,8 +77,8 @@
   // og innenfor hvert steg velges nivået med flest berøringer. Nivå 2 og 3 er «neste mål» hvis kursen bryter gjennom nivå 1.
   function srLevels(B, e, px, tf) {
     if (e < 30) return { sup: [], res: [] }; const S = B.slice(0, e + 1), A = RG.atr(S)[e] || px * 0.02;
-    const lv = RG.levels(S, e, A, tf === '1w' ? 2 : 3, tf === '1d' ? 900 : tf === '1w' ? 480 : 480);
-    const gap = Math.max(1.2 * A, px * ({ '15m': 0.006, '1h': 0.012, '4h': 0.02, '1d': 0.03, '1w': 0.06 }[tf] || 0.03));
+    const lv = RG.levels(S, e, A, tf === '1w' || tf === '1M' ? 2 : 3, tf === '1d' ? 900 : 480);
+    const gap = Math.max(1.2 * A, px * ({ '15m': 0.006, '1h': 0.012, '4h': 0.02, '1d': 0.03, '1w': 0.06, '1M': 0.1 }[tf] || 0.03));
     const pick = (arr, dir) => { const out = []; let ref = px, first = true;
       while (out.length < 3) { const c = arr.filter(l => dir * (l.p - ref) >= (first ? 0 : gap)); if (!c.length) break; first = false;
         const w = c.filter(l => Math.abs(l.p - c[0].p) <= gap); const best = w.reduce((a, b) => b.n > a.n ? b : a, w[0]); out.push(best); ref = best.p; }
@@ -136,7 +149,7 @@
     const LW = window.LightweightCharts; if (!LW) return null;
     const opt = () => ({ autoSize: true, localization: { locale: 'nb-NO', dateFormat: 'dd.MM.yy' }, layout: { background: { type: 'solid', color: css('--panel') }, textColor: css('--muted'), fontFamily: getComputedStyle(document.body).fontFamily, fontSize: 13 },
       grid: { vertLines: { color: css('--grid') }, horzLines: { color: css('--grid') } }, rightPriceScale: { borderColor: css('--line') },
-      timeScale: { borderColor: css('--line'), timeVisible: true, secondsVisible: false, rightOffset: 3 }, crosshair: { mode: 0 }, handleScale: { axisPressedMouseMove: true } });
+      timeScale: { borderColor: css('--line'), timeVisible: true, secondsVisible: false, rightOffset: 6 }, crosshair: { mode: 0 }, handleScale: { axisPressedMouseMove: true } });
     const ch = LW.createChart(document.getElementById('tm-chart'), opt()), sc = LW.createChart(document.getElementById('tm-sub'), Object.assign(opt(), { timeScale: { visible: false } }));
     const up = css('--up'), dn = css('--down'), ln = (color, w = 2, style = 0) => ch.addLineSeries({ color, lineWidth: w, lineStyle: style, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
     const S = { candle: ch.addCandlestickSeries({ upColor: up, downColor: dn, wickUpColor: up, wickDownColor: dn, borderVisible: false }),
@@ -148,16 +161,29 @@
     let lock = false; const sync = (a, b) => a.timeScale().subscribeVisibleLogicalRangeChange(r => { if (lock || !r) return; lock = true; b.timeScale().setVisibleLogicalRange(r); lock = false; }); sync(ch, sc); sync(sc, ch);
     ch.subscribeCrosshairMove(p => { const C = T.chart; if (!C || !C.B) return; const b = p && p.time != null ? C.byT.get(p.time) : null; hover(b || C.B[C.B.length - 1], !b); });
     const host = document.getElementById('tm-chart'); host.style.position = 'relative'; const layer = el('div', 'zlayer'); host.append(layer);
-    ch.timeScale().subscribeVisibleLogicalRangeChange(() => requestAnimationFrame(placeZones)); if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(placeZones)).observe(host);
-    return { ch, sc, S, lines: [], osc: [], k: null, B: null, byT: new Map(), layer, zones: [] };
+    ch.timeScale().subscribeVisibleLogicalRangeChange(r => { requestAnimationFrame(placeZones); if (r && r.from < 15) older(); }); if (window.ResizeObserver) new ResizeObserver(() => requestAnimationFrame(placeZones)).observe(host);
+    ch.priceScale('right').applyOptions({ mode: T.log ? 1 : 0 });
+    const C = { ch, sc, S, lines: [], osc: [], k: null, B: null, byT: new Map(), layer, zones: [] };
+    C.D = window.DRAW ? DRAW.create({ ch, series: S.candle, host, bars: () => C.B, step: () => MS[T.tf], key: () => T.sym, onScale: () => placeZones() }) : null;
+    return C;
   }
-  function hover(b, last) { const box = document.getElementById('tm-hover'); if (!box || !b) return; const tf = PER[T.per][1];
-    const when = tf === '1d' ? dmy(b.t) : tf === '1w' ? 'Uke fra ' + dmy(b.t) : new Date(b.t).toLocaleString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-    box.replaceChildren(document.createTextNode(`${last ? 'Siste: ' : ''}${when} · åpnet ${price(b.o)} · høyest ${price(b.h)} · lavest ${price(b.l)} · ${last ? 'nå' : 'sluttet'} ${price(b.c)} `), el('span', cls(b.c - b.o), pct(b.c / b.o - 1))); }
+  // blar man helt til venstre, hentes eldre lys (som i TradingView), og utsnittet beholdes
+  function older() { const C = T.chart; if (!C || !C.B || C.older) return; const sym = T.sym, tf = T.tf; C.older = true;
+    loadOlder(sym, tf).then(n => { C.older = false; if (!n || sym !== T.sym || tf !== T.tf) return; const ts2 = C.ch.timeScale(), r = ts2.getVisibleLogicalRange(); paint(); if (r) ts2.setVisibleLogicalRange({ from: r.from + n, to: r.to + n }); }); }
+  // sett utsnittet: fra et tidspunkt (periodeknappene) eller et antall lys. Mangler eldre lys, hentes de først.
+  function applyView() { const C = T.chart, c = T.kl[key(T.sym, T.tf)]; if (!C || !c || !c.B) return; const B = c.B, n = B.length, v = T.view || { bars: 150 };
+    if (v.from != null && B[0].t > v.from && !c.done && (v.tries = (v.tries || 0) + 1) <= 6) { loadOlder(T.sym, T.tf).then(k => { if (k) paint(); applyView(); }); return; }
+    let from = v.from != null ? B.findIndex(b => b.t >= v.from) : n - v.bars; if (from < 0) from = n - 30; C.ch.timeScale().setVisibleLogicalRange({ from: Math.max(0, from) - 0.5, to: n + 3 }); }
+  function hover(b, last) { const box = document.getElementById('tm-hover'); if (!box || !b) return; const tf = T.tf;
+    const when = tf === '1d' ? dmy(b.t) : tf === '1w' ? 'Uke fra ' + dmy(b.t) : tf === '1M' ? my(b.t) : new Date(b.t).toLocaleString('nb-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    box.replaceChildren(document.createTextNode(`${when}  Å ${price(b.o)}  H ${price(b.h)}  L ${price(b.l)}  ${last ? 'Nå' : 'S'} ${price(b.c)} `), el('span', cls(b.c - b.o), pct(b.c / b.o - 1))); }
   const line = (B, a) => B.map((b, i) => a[i] == null ? { time: ts(b.t) } : { time: ts(b.t), value: a[i] });
   function paint(full) {
-    const C = T.chart; if (!C || !T.sym) return; const [, tf, show] = PER[T.per], c = T.kl[key(T.sym, tf)]; if (!c || !c.B) return;
-    const B = c.B, k = key(T.sym, T.per), cl = B.map(b => b.c), up = css('--up'), dn = css('--down');
+    const C = T.chart; if (!C || !T.sym) return; const tf = T.tf, c = T.kl[key(T.sym, tf)]; if (!c || !c.B) return;
+    const B = c.B, k = key(T.sym, tf), cl = B.map(b => b.c), up = css('--up'), dn = css('--down'), show = C.visN || 150;
+    // dagsverdier (f.eks. 200-dagerslinja) på uke- og månedsgraf: verdien fra siste dag i hvert lys
+    const fromDaily = (DB, arr) => { const out = new Array(B.length).fill(null); let j = 0; for (let i = 0; i < B.length; i++) { const end = i + 1 < B.length ? B[i + 1].t : Infinity; while (j + 1 < DB.length && DB[j + 1].t < end) j++; if (DB[j] && DB[j].t < end && DB[j].t >= B[i].t) out[i] = arr[j]; } return out; };
+    const big = tf === '1w' || tf === '1M';
     if (full || C.k !== k) { const p = prec(B[B.length - 1].c); C.S.candle.applyOptions({ priceFormat: { type: 'price', precision: p, minMove: Math.pow(10, -p) } }); }
     C.byT = new Map(B.map(b => [ts(b.t), b]));
     C.S.candle.setData(B.map(b => ({ time: ts(b.t), open: b.o, high: b.h, low: b.l, close: b.c })));
@@ -166,7 +192,7 @@
     const D = T.kl[key(T.sym, '1d')], tr = trend(T.sym); C.lines.forEach(l => C.S.candle.removePriceLine(l)); C.lines = [];
     const pl = (p, color, title, style = 2, w = 2) => { if (p == null || !isFinite(p)) return; C.lines.push(C.S.candle.createPriceLine({ price: p, color, lineWidth: w, lineStyle: style, axisLabelVisible: true, title })); };
     if (tf === '1d') C.S.e200.setData(line(B, RG.ema(cl, 200)));
-    else if (tf === '1w' && D && D.B) { const E = RG.ema(D.B.map(b => b.c), 200), m = new Map(D.B.map((b, i) => [b.t, E[i]])); C.S.e200.setData(B.map(b => { let v = null; for (let d = 6; d >= 0 && v == null; d--) v = m.get(b.t + d * 864e5); return v == null ? { time: ts(b.t) } : { time: ts(b.t), value: v }; })); }
+    else if (big && D && D.B) C.S.e200.setData(line(B, fromDaily(D.B, RG.ema(D.B.map(b => b.c), 200))));
     else { C.S.e200.setData([]); if (tr) pl(tr.e200, css('--orange'), '200-dagerslinja', 0, 2); }
     const isD = tf === '1d'; C.S.e50.setData(T.ind.e50 && isD ? line(B, RG.ema(cl, 50)) : []); C.S.e20.setData(T.ind.e20 && isD ? line(B, RG.ema(cl, 20)) : []);
     // 50-ukers og 300-dagers: linjer på dags- og ukegraf, vannrette streker ellers
@@ -174,22 +200,21 @@
       else if (T.ind.w200 && tf === '1w') C.S.w200.setData(line(B, RG.sma(cl, 200)));
       else { C.S.w200.setData([]); if (T.ind.w200 && W2 && W2.now) pl(W2.now, '#d6336c', '200-ukerslinja', 0, 2); }
       // grunnlag for 200W-sonene (tegnes i placeZones): én verdi per lys der 200W er kjent
-      const WS = isD && W2 ? B.map(b => W2.at(b.t)) : tf === '1w' ? RG.sma(cl, 200) : null; C.w2 = WS ? B.map((b, i) => WS[i] == null ? null : { t: b.t, w: WS[i] }).filter(Boolean) : []; C.w2now = W2 && W2.now; C.tfMs = MS[tf]; }
+      const WS = tf === '1w' ? RG.sma(cl, 200) : W2 ? B.map(b => W2.at(b.t)) : null; C.w2 = WS ? B.map((b, i) => WS[i] == null ? null : { t: b.t, w: WS[i] }).filter(Boolean) : []; C.w2now = W2 && W2.now; C.tfMs = MS[tf]; }
     if (T.ind.w50 && isD) C.S.w50.setData(line(B, w50daily(B))); else if (T.ind.w50 && tf === '1w') C.S.w50.setData(line(B, RG.sma(cl, 50))); else { C.S.w50.setData([]); if (T.ind.w50 && tr && tr.w50) pl(tr.w50, css('--fg'), '50-ukerslinja', 2, 1); }
     if (T.ind.s300 && isD) C.S.s300.setData(line(B, RG.sma(cl, 300)));
-    else if (T.ind.s300 && tf === '1w' && D && D.B) { const S3 = RG.sma(D.B.map(b => b.c), 300), m3 = new Map(D.B.map((b, i) => [b.t, S3[i]])); C.S.s300.setData(B.map(b => { let v = null; for (let d = 6; d >= 0 && v == null; d--) v = m3.get(b.t + d * 864e5); return v == null ? { time: ts(b.t) } : { time: ts(b.t), value: v }; })); }
+    else if (T.ind.s300 && big && D && D.B) C.S.s300.setData(line(B, fromDaily(D.B, RG.sma(D.B.map(b => b.c), 300))));
     else { C.S.s300.setData([]); if (T.ind.s300 && tr && tr.s300) pl(tr.s300, css('--orange'), '300-dagerslinja', 1, 1); }
-    if (!isD && tf !== '1w' && tr && T.ind.e50) pl(tr.e50, css('--blue'), '50-dagerslinja', 0, 1);
+    if (!isD && !big && tr && T.ind.e50) pl(tr.e50, css('--blue'), '50-dagerslinja', 0, 1);
     C.S.vwap.setData(T.ind.vwap && MS[tf] < MS['1d'] ? line(B, RG.vwap(B)) : []);
     const bb = T.ind.bb ? RG.boll(cl) : null; C.S.bbU.setData(bb ? line(B, bb.up) : []); C.S.bbL.setData(bb ? line(B, bb.lo) : []);
     // støtte/motstand som soner, regnet på tidsrammen som vises (bare lukkede candles)
     const e = closedEnd(B), A = RG.atr(B.slice(0, e + 1))[e] || B[e].c * 0.02, pxNow = B[B.length - 1].c; C.zones = [];
     if (T.ind.lv && e > 30) { const SR = srLevels(B, e, pxNow, tf), half = Math.max(0.25 * A, pxNow * 0.003), below = SR.sup, above = SR.res;
-      const strength = n => n >= 3 ? `sterk (${n} berøringer)` : n === 2 ? '2 berøringer' : '1 berøring';
-      below.forEach((l, i) => { C.zones.push({ lo: l.p - half, hi: l.p + half, p: l.p, kind: 'up', short: `Støtte ${i + 1}`, label: `Støtte ${i + 1}${i ? ' – neste mål ned' : ''} · ${strength(l.n)}` }); C.lines.push(C.S.candle.createPriceLine({ price: l.p, color: up, lineWidth: 1, lineVisible: false, axisLabelVisible: true, title: '' })); });
-      above.forEach((l, i) => { C.zones.push({ lo: l.p - half, hi: l.p + half, p: l.p, kind: 'down', short: `Motstand ${i + 1}`, label: `Motstand ${i + 1}${i ? ' – neste mål opp' : ''} · ${strength(l.n)}` }); C.lines.push(C.S.candle.createPriceLine({ price: l.p, color: dn, lineWidth: 1, lineVisible: false, axisLabelVisible: true, title: '' })); }); }
+      below.forEach((l, i) => { C.zones.push({ lo: l.p - half, hi: l.p + half, p: l.p, kind: 'up', short: `Støtte ${i + 1}`, label: `Støtte ${i + 1}` }); C.lines.push(C.S.candle.createPriceLine({ price: l.p, color: up, lineWidth: 1, lineVisible: false, axisLabelVisible: true, title: '' })); });
+      above.forEach((l, i) => { C.zones.push({ lo: l.p - half, hi: l.p + half, p: l.p, kind: 'down', short: `Motstand ${i + 1}`, label: `Motstand ${i + 1}` }); C.lines.push(C.S.candle.createPriceLine({ price: l.p, color: dn, lineWidth: 1, lineVisible: false, axisLabelVisible: true, title: '' })); }); }
     // trendlinjer
-    const TLv = T.ind.tl && e > 40 ? RG.trendlines(B, e, { look: Math.min(250, Math.max(show, 120)), k: tf === '1w' ? 3 : 4 }) : { up: null, down: null }; C.tl = TLv;
+    const TLv = T.ind.tl && e > 40 ? RG.trendlines(B, e, { look: Math.min(250, Math.max(show, 120)), k: big ? 3 : 4 }) : { up: null, down: null }; C.tl = TLv;
     const tlData = x => x ? x.pts.map(p => ({ time: ts(p.t), value: p.v })) : [];
     C.S.tlUp.setData(tlData(TLv.up)); C.S.tlDn.setData(tlData(TLv.down));
     const inc = [...C.zones.filter(z => z.kind === 'up').slice(0, 2), ...C.zones.filter(z => z.kind === 'down').slice(0, 2)];
@@ -204,8 +229,7 @@
     else if (T.sub === 'atr') { const A = RG.atr(B); C.S.o1.setData(line(B, A.map((v, i) => v == null ? null : v / B[i].c * 100))); C.S.o2.setData([]); C.S.oh.setData(B.map(b => ({ time: ts(b.t) }))); }
     else { C.S.o1.setData([]); C.S.o2.setData([]); C.S.oh.setData([]); }
     C.S.candle.setMarkers(T.ind.mk ? markers(B) : []);
-    if (C.k !== k) { const n = B.length; C.ch.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - show), to: n + 2 }); }
-    C.k = k; C.B = B; hover(B[B.length - 1], true); legend(tf);
+    const first = C.k !== k; C.k = k; C.B = B; if (first) applyView(); hover(B[B.length - 1], true); legend(tf); if (C.D) C.D.render();
   }
   function placeZones() { const C = T.chart; if (!C || !C.layer) return; const w = C.ch.timeScale().width();
     C.layer.replaceChildren(...overlays(C, w), ...C.zones.map(z => { const y1 = C.S.candle.priceToCoordinate(z.hi), y2 = C.S.candle.priceToCoordinate(z.lo); if (y1 == null || y2 == null) return null;
@@ -254,126 +278,125 @@
     return out; }
   function legend(tf) {
     const box = document.getElementById('tm-legend'), it = (color, txt, style) => { const s = el('span'); const i = el('i'); i.style.borderTopColor = color; if (style) i.style.borderTopStyle = style; s.append(i, document.createTextNode(txt)); return s; };
-    const step = { '15m': '15 minutter', '1h': 'time', '4h': '4 timer', '1d': 'dag', '1w': 'uke' }[tf];
-    const a = [el('span', null, `Hvert lys er én ${step}: grønt = steg, rødt = falt`), it(css('--orange'), '200-dagerslinja – over = opptrend, under = nedtrend')];
     const sw = (c2, txt) => { const s2 = el('span'); const b2 = el('b', 'zsw ' + c2); s2.append(b2, document.createTextNode(txt)); return s2; };
-    if (T.ind.lv) a.push(sw('up', 'Støtte: område der kursen har snudd opp før'), sw('down', 'Motstand: område der kursen har snudd ned før'));
-    if (T.ind.tl) a.push(it(css('--up'), 'Stigende trendlinje (gjennom bunner)'), it(css('--down'), 'Fallende trendlinje (gjennom topper)'));
-    if (T.ind.w200) a.push(it('#d6336c', '200-ukerslinja – historisk gulv i bjørnemarkeder'));
-    if (T.ind.w200z) a.push(sw('w2z', 'Fargebånd: 200W-soner – lilla Fire sale (< 0,75×), blå Very cheap (0,75–1×), grønn Cheap, gul Fair value, oransje Expensive, rød Very expensive (> 1,75×)'));
-    if (T.ind.halv) a.push(it('#a16207', 'Bitcoin-halvering (stiplet), grått = 540 dager før, gult = 540 dager etter', 'dashed'));
-    if (T.ind.w50) a.push(it(css('--fg'), '50-ukerslinja – skillet mellom bjørne- og oksemarked', 'dashed')); if (T.ind.s300) a.push(it(css('--orange'), '300-dagerslinja', 'dotted'));
+    const a = [it(css('--orange'), '200-dagerslinja')];
+    if (T.ind.lv) a.push(sw('up', 'Støtte'), sw('down', 'Motstand'));
+    if (T.ind.tl) a.push(it(css('--up'), 'Trendlinjer'));
+    if (T.ind.w200) a.push(it('#d6336c', '200-ukerslinja'));
+    if (T.ind.w200z) a.push(sw('w2z', '200W-soner'));
+    if (T.ind.halv) a.push(it('#a16207', 'Halvering ±540 d', 'dashed'));
+    if (T.ind.w50) a.push(it(css('--fg'), '50-ukerslinja', 'dashed')); if (T.ind.s300) a.push(it(css('--orange'), '300-dagerslinja', 'dotted'));
     if (T.ind.e50) a.push(it(css('--blue'), '50-dagerslinja')); if (T.ind.e20) a.push(it(css('--purple'), '20-dagerslinja'));
     box.replaceChildren(...a);
   }
   function status() {
-    const box = document.getElementById('tm-status'); const [, tf] = PER[T.per], c = T.kl[key(T.sym, tf)]; if (!box || !c) return;
-    if (!c.B) { box.className = 'down small'; box.textContent = c.err ? `Kursdata er ikke tilgjengelig akkurat nå (Binance svarte ikke). Prøver igjen automatisk.` : 'Henter kurser …'; return; }
-    const late = Date.now() - c.at > 5 * 6e4, gaps = RG.gaps(c.B, MS[tf]);
-    let t = `Kilde: Binance · oppdatert kl. ${hm(c.at)} · tider i norsk tid`;
-    if (c.err) t += ` · ⚠ siste oppdatering feilet, viser kurser fra kl. ${hm(c.at)}`; else if (late) t += ' · ⚠ kursene kan være forsinket';
+    const box = document.getElementById('tm-status'); const tf = T.tf, c = T.kl[key(T.sym, tf)]; if (!box || !c) return;
+    if (!c.B) { box.className = 'down small'; box.textContent = c.err ? 'Kursdata er ikke tilgjengelig akkurat nå (Binance svarte ikke). Prøver igjen automatisk.' : 'Henter kurser …'; return; }
+    const late = Date.now() - c.at > 5 * 6e4, gaps = RG.gaps(c.B, MS[tf] * (tf === '1M' ? 1.1 : 1));
+    let t = `Binance · kl. ${hm(c.at)} · norsk tid`;
+    if (c.err) t += ` · ⚠ siste oppdatering feilet`; else if (late) t += ' · ⚠ kan være forsinket';
     if (gaps.length) t += ` · ⚠ ${gaps.length} hull i dataene`;
     box.className = (c.err || late || gaps.length ? 'warn' : 'muted') + ' small'; box.textContent = t;
   }
 
-  // ---------------------------------------------------------------- forklaring i klartekst
+  // ---------------------------------------------------------------- forklaring i klartekst (kort)
   function point(icon, iconCls, title, text) { const d = el('div', 'pt'), i = el('span', 'ic ' + (iconCls || ''), icon), s = el('div', 'stack'); s.style.gap = '2px'; s.append(el('b', null, title), el('span', null, text)); d.append(i, s); return d; }
+  const goTab = (a, tab, extra) => { a.href = '#tab=' + tab; a.addEventListener('click', e => { e.preventDefault(); dash.setParams(Object.assign({ tab }, extra || {})); window.scrollTo({ top: 0 }); }); return a; };
   function drawExplain() {
     const box = document.getElementById('tm-explain'); if (!box || !T.sym) return; const n = names()[T.sym] || T.sym, t = trend(T.sym), H = hist();
     document.getElementById('tm-ex-title').textContent = `Hva betyr dette for ${n}?`;
     if (!t) { box.replaceChildren(el('p', 'muted', T.kl[key(T.sym, '1d')] && T.kl[key(T.sym, '1d')].err ? 'Kursdata er ikke tilgjengelig akkurat nå.' : 'Henter …')); return; }
-    const out = [];
-    const days = t.side === 1 ? '1 dag' : `${t.side} dager`;
-    if (t.above) out.push(point('▲', 'up', t.near ? 'Opptrend – men helt nær trendlinja' : 'Opptrend', `Kursen er ${pa(t.d200)} over 200-dagerslinja (${price(t.e200)}) og har vært over i ${days}. Lukker en dag under ${price(t.e200)}, regnes trenden som snudd ned.`));
-    else out.push(point('▼', 'down', t.near ? 'Nedtrend – men helt nær trendlinja' : 'Nedtrend', `Kursen er ${pa(t.d200)} under 200-dagerslinja (${price(t.e200)}) og har vært under i ${days}. Lukker en dag over ${price(t.e200)}, regnes trenden som snudd opp.`));
-    if (t.ath) out.push(point('↧', '', t.dd > -0.005 ? 'På rekordnivå' : `${pa(t.dd)} under rekorden`, t.dd > -0.005 ? `Kursen er på sitt høyeste noen gang.` : `Høyeste kurs noen gang var ${price(t.ath)} i ${my(t.athT)}. Kursen må stige ${pa(t.ath / t.px - 1)} for å nå den igjen.`));
-    out.push(point('↔', '', 'Siste tiden', `Siste uke ${pct(t.r7)}, siste måned ${pct(t.r30)}.`));
-    { const mc = window.MACRO && MACRO.summary();
-      if (mc) { const b = mc.btc90, a = mc.alle90, tot = mc.counts.gronn + mc.counts.gul + mc.counts.rod;
-        const txt = `${mc.counts.gronn} av ${tot} store drivere for hele markedet er grønne (trend, bredde, stablecoins, renter, dollar og aksjer). ${b && b.n ? `I uker med samme makroklima tidligere var Bitcoin ${pct0(b.q50)} (median) 3 måneder senere, og høyere i ${pa(b.up)} av ukene – mot ${pct0(a.q50)} og ${pa(a.up)} for alle uker. ` : ''}${mc.verdict === 'skilte' ? '' : 'Skillet har ikke vært sikkert nok til å brukes som signal. '}`;
-        const pt = point('M', mc.cls, `Makrobildet: ${mc.label.toLowerCase()}`, txt); const lk = el('a', null, 'Se hele makrobildet'); lk.href = '#tab=makro'; lk.addEventListener('click', e => { e.preventDefault(); dash.setParams({ tab: 'makro' }); window.scrollTo({ top: 0 }); });
-        pt.lastChild.lastChild.append(lk, document.createTextNode('.')); out.push(pt); } }
-    out.push(point('⇅', '', 'Støtte, motstand og trendlinjer', 'Se listen «Viktige nivåer» under – der står hvert nivå, hvor langt unna det er, og hvorfor det er viktig.'));
-    const h = H && H.coins && H.coins[T.sym] && H.coins[T.sym].hz[90]; const r = h && h.range;
-    if (r) { const p = document.createElement('div'); const a = el('a', null, 'Se Historiske scenarioer'); a.href = '#tab=historikk&coin=' + T.sym; a.addEventListener('click', e => { e.preventDefault(); dash.setParams({ tab: 'historikk', coin: T.sym }); window.scrollTo({ top: 0 }); });
-      const pt = point('?', '', 'Hva kan skje de neste 3 månedene?', `Trolig mellom ${price(t.px * (1 + r.lo))} og ${price(t.px * (1 + r.hi))}${r.cover && r.cover.n ? ` – et slikt spenn har stemt ${nf(r.cover.cover * 10, { maximumFractionDigits: 0 })} av 10 ganger før for ${n}` : ''}. Om det går opp eller ned, kan ingen spå. `); pt.lastChild.lastChild.append(a, document.createTextNode('.')); out.push(pt); }
-    else out.push(point('?', '', 'Hva kan skje videre?', 'Beregningen er ikke tilgjengelig akkurat nå.'));
-    out.push(el('div', 'note', 'Dette er ikke kjøps- eller salgsråd. Å følge 200-dagerslinja har tidligere gitt mindre store fall, men ikke mer avkastning enn å bare eie coinen (testet på 2018–2026).'));
+    const out = [], days = t.side === 1 ? '1 dag' : `${t.side} dager`;
+    out.push(point(t.above ? '▲' : '▼', t.above ? 'up' : 'down', (t.above ? 'Opptrend' : 'Nedtrend') + (t.near ? ' – helt nær trendlinja' : ''),
+      `${pa(t.d200)} ${t.above ? 'over' : 'under'} 200-dagerslinja (${price(t.e200)}) i ${days}. Et dagslukk på den andre siden snur trenden.`));
+    if (t.ath) out.push(point('↧', '', t.dd > -0.005 ? 'På rekordnivå' : `${pa(t.dd)} under rekorden`, t.dd > -0.005 ? 'Høyeste kurs noen gang.' : `Rekord ${price(t.ath)} (${my(t.athT)}). Siste uke ${pct(t.r7)}, siste måned ${pct(t.r30)}.`));
+    const mc = window.MACRO && MACRO.summary();
+    if (mc) { const b = mc.btc90, tot = mc.counts.gronn + mc.counts.gul + mc.counts.rod, pt = point('M', mc.cls, `Makro: ${mc.label.toLowerCase()}`, `${mc.counts.gronn} av ${tot} drivere grønne.${b && b.n ? ` Lignende uker før: ${pct0(b.q50)} etter 3 mnd (median). ` : ' '}`);
+      pt.lastChild.lastChild.append(goTab(el('a', null, 'Makrobildet'), 'makro')); out.push(pt); }
+    const h = H && H.coins && H.coins[T.sym] && H.coins[T.sym].hz[90], r = h && h.range;
+    if (r) { const pt = point('?', '', 'Neste 3 måneder', `Trolig ${price(t.px * (1 + r.lo))} – ${price(t.px * (1 + r.hi))}${r.cover && r.cover.n ? ` (stemt ${nf(r.cover.cover * 10, { maximumFractionDigits: 0 })} av 10 ganger før)` : ''}. Retningen kan ingen spå. `);
+      pt.lastChild.lastChild.append(goTab(el('a', null, 'Scenarioer'), 'historikk', { coin: T.sym })); out.push(pt); }
+    out.push(el('p', 'muted small', 'Ikke kjøps- eller salgsråd.'));
     box.replaceChildren(...out);
   }
 
-
-  // ---------------------------------------------------------------- viktige nivåer, med begrunnelse
-  // Henter historikk for de store trendlinjene fra data/macro.json (hvor ofte de har holdt før, og hva som skjedde etterpå).
+  // ---------------------------------------------------------------- viktige nivåer: kompakt liste under grafen, kort forklaring når man trykker
   function drawLevels() {
     const box = document.getElementById('tm-levels'); if (!box || !T.sym) return; const n = names()[T.sym] || T.sym, t = trend(T.sym);
-    document.getElementById('tm-lv-title').textContent = `Viktige nivåer for ${n} – og hvorfor de betyr noe`;
+    document.getElementById('tm-lv-title').textContent = `Viktige nivåer for ${n}`;
     if (!t) { box.replaceChildren(el('p', 'muted', 'Henter …')); return; }
     const md = window.MACRO && MACRO.data(), ML = md && md.lines && md.lines[T.sym], px = t.px, items = [];
-    const near = (a, b) => a && b && Math.abs(a / b - 1) < 0.015, fmtD = p => `${Math.abs(p / px - 1) < 0.1 ? nf(Math.abs(p / px - 1) * 100, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' %' : pa(p / px - 1)} ${p > px ? 'over' : 'under'}`;
-    const lines = [['e200', t.e200, '200-dagerslinja', 'Snittet av de siste 200 dagslukkene. Den mest brukte trendlinja i alle markeder: over = opptrend, under = nedtrend. Fordi så mange følger den, reagerer kursen ofte når den kommer hit.'],
-      ['s300', t.s300, '300-dagerslinja', 'Snittet av de siste 300 dagslukkene. Ligger tregere enn 200-dagerslinja og har flere ganger vært «siste skanse» i korreksjoner i et oksemarked.'],
-      ['w200', t.w200, '200-ukerslinja', 'Snittet av de siste 200 ukelukkene (ca. 4 år). For Bitcoin har den vært gulvet i bjørnemarkeder: ved syklusbunnene har kursen ligget fra rett under linja (2018) til rundt 30–36 % under (2020 og 2022). Brudd under har ofte betydd kapitulasjon, og å komme tilbake over har ofte vært starten på ny opptur.'],
-      ['w50', t.w50, '50-ukerslinja', 'Snittet av de siste 50 ukelukkene. Mange makroanalytikere bruker den som skillet mellom bjørne- og oksemarked: flere ukelukk over har startet store oppturer, og brudd under har startet store fall. Det er ukelukket (søndag kl. 01/02 norsk tid) som teller.']];
-    const histTxt = k => { const x = ML && ML.tests && ML.tests[k]; if (!x || !x.n) return '';
-      const ex = (x.last || []).filter(e => e.r90 != null).slice(-3).map(e => `${my(Date.parse(e.date))}: ${e.held ? 'holdt' : 'brøt'}, ${pct0(e.r90)} etter 3 mnd`).join('; ');
-      return ` Før: ${n} har kommet ned til linja ovenfra ${x.n} ganger, og den holdt ${x.held} av dem.${x.med90held != null ? ` Når den holdt, var kursen ${pct0(x.med90held)} (median) 3 måneder senere` : ''}${x.med90fail != null ? `; når den brøt, ${pct0(x.med90fail)}` : ''}.${ex ? ` Siste ganger – ${ex}.` : ''}`; };
-    for (const [k, p, nm, why] of lines) if (p) items.push({ p, kind: nm, cls: '', text: `${why}${p < px ? ` Kursen er ${pa(px / p - 1)} over – linja fungerer som støtte under.` : ` Kursen er ${pa(p / px - 1)} under – linja fungerer som tak til kursen lukker over den igjen.`}${histTxt(k)}` });
-    const strength = l => l.n >= 3 ? 'Sterkt nivå' : l.n === 2 ? 'Middels sterkt nivå' : 'Svakt nivå (bare én tidligere reaksjon)';
-    const conf = p => { const c = lines.filter(([, q]) => near(p, q)).map(([, , nm]) => nm); return c.length ? ` Ligger i samme område som ${c.join(' og ')} – når to grunner peker på samme sted, følger enda flere med, og nivået blir viktigere.` : ''; };
-    const lastTxt = l => l.last ? `, sist i ${my(l.last)}` : '';
-    t.sr.res.forEach((l, i) => { const nx = t.sr.res[i + 1]; items.push({ p: l.p, kind: `Motstand ${i + 1}`, cls: 'down', text: `${strength(l)}: kursen har snudd ned herfra ${l.n === 1 ? 'én gang' : l.n + ' ganger'}${lastTxt(l)}.${i === 0 ? ' Selgere har tatt over her før, og mange som kjøpte på dette nivået, selger gjerne når de kommer «tilbake i null».' : ''}${conf(l.p)} ${nx ? `Lukker kursen en dag over, er neste mål ${price(nx.p)} (${fmtD(nx.p)}).` : 'Lukker kursen over, er det få kjente tak rett over.'}` }); });
-    t.sr.sup.forEach((l, i) => { const nx = t.sr.sup[i + 1]; items.push({ p: l.p, kind: `Støtte ${i + 1}`, cls: 'up', text: `${strength(l)}: kursen har snudd opp herfra ${l.n === 1 ? 'én gang' : l.n + ' ganger'}${lastTxt(l)}.${i === 0 ? ' Kjøpere har slått til her før, og mange venter med kjøpsordre på samme sted igjen.' : ''}${conf(l.p)} ${nx ? `Lukker kursen en dag under, er neste støtte ${price(nx.p)} (${fmtD(nx.p)}).` : 'Lukker kursen under, er det få kjente gulv rett under.'}` }); });
+    const near = (a, b) => a && b && Math.abs(a / b - 1) < 0.015, dist = p => (p > px ? '+' : '−') + nf(Math.abs(p / px - 1) * 100, { maximumFractionDigits: Math.abs(p / px - 1) < 0.1 ? 1 : 0 }) + ' %';
+    const lines = [['e200', t.e200, '200-dagerslinja', 'Hovedtrenden: over = opptrend, under = nedtrend.'], ['s300', t.s300, '300-dagerslinja', 'Tregere trendlinje – ofte siste støtte i et oksemarked.'],
+      ['w200', t.w200, '200-ukerslinja', 'Historisk gulv i bjørnemarkeder (bunner fra rett under til ca. 35 % under).'], ['w50', t.w50, '50-ukerslinja', 'Skillet mellom bjørne- og oksemarked. Ukelukket teller.']];
+    const histTxt = k => { const x = ML && ML.tests && ML.tests[k]; if (!x || !x.n) return ''; return ` Holdt ${x.held} av ${x.n} tester ovenfra${x.med90held != null ? `; ${pct0(x.med90held)} etter 3 mnd når den holdt` : ''}${x.med90fail != null ? `, ${pct0(x.med90fail)} når den brøt` : ''}.`; };
+    for (const [k, p, nm, why] of lines) if (p) items.push({ p, kind: nm, cls: 'ma', n: null, text: why + histTxt(k) });
+    const conf = p => { const c = lines.filter(([, q]) => near(p, q)).map(([, , nm]) => nm); return c.length ? ` Sammenfaller med ${c.join(' og ')}.` : ''; };
+    t.sr.res.forEach((l, i) => { const nx = t.sr.res[i + 1]; items.push({ p: l.p, kind: `Motstand ${i + 1}`, cls: 'down', n: l.n, text: `Snudd ned her ${l.n === 1 ? 'én gang' : l.n + ' ganger'}${l.last ? `, sist ${my(l.last)}` : ''}.${conf(l.p)}${nx ? ` Neste ved brudd: ${price(nx.p)}.` : ''}` }); });
+    t.sr.sup.forEach((l, i) => { const nx = t.sr.sup[i + 1]; items.push({ p: l.p, kind: `Støtte ${i + 1}`, cls: 'up', n: l.n, text: `Snudd opp her ${l.n === 1 ? 'én gang' : l.n + ' ganger'}${l.last ? `, sist ${my(l.last)}` : ''}.${conf(l.p)}${nx ? ` Neste ved brudd: ${price(nx.p)}.` : ''}` }); });
     const tl = t.tl || {};
-    if (tl.up && tl.up.now) items.push({ p: tl.up.now, kind: 'Stigende trendlinje', cls: 'up', text: 'Linja gjennom de siste stigende bunnene. Så lenge kursen holder seg over, er oppgangen intakt; et dagslukk under er et tidlig faresignal.' });
-    if (tl.down && tl.down.now) items.push({ p: tl.down.now, kind: 'Fallende trendlinje', cls: 'down', text: 'Linja gjennom de siste fallende toppene. Et dagslukk over den kan bety at nedgangen er brutt.' });
-    if (t.ath && t.ath / px < 1.8 && t.dd < -0.005) items.push({ p: t.ath, kind: 'Rekorden', cls: '', text: `Høyeste dagslukk noen gang (${my(t.athT)}). Over rekorden finnes ingen tidligere selgere – derfor går kursen ofte raskt når en rekord brytes.` });
-    const below = items.filter(x => x.p < px).sort((a, b) => b.p - a.p), above = items.filter(x => x.p >= px).sort((a, b) => b.p - a.p);
-    const s1 = below[0], r1 = above[above.length - 1];
-    const nowRow = { p: px, kind: 'Kursen nå', now: true, text: `${r1 ? `Nærmeste nivå over: ${r1.kind.toLowerCase()} ${price(r1.p)} (${fmtD(r1.p)}). ` : ''}${s1 ? `Nærmeste nivå under: ${s1.kind.toLowerCase()} ${price(s1.p)} (${fmtD(s1.p)}).` : ''}` };
-    const row = x => { const d = el('div', 'lvl' + (x.now ? ' now' : '')); const p = el('div', 'p', price(x.p)); if (!x.now) p.append(el('small', null, fmtD(x.p)));
-      const s2 = el('div', 'stack'); s2.style.gap = '2px'; s2.append(el('span', 'kind ' + (x.cls || ''), x.kind), el('span', null, x.text)); d.append(p, s2); return d; };
-    box.replaceChildren(...above.map(row), row(nowRow), ...below.map(row),
-      el('p', 'muted small', `Nivåene er regnet på dagsgrafen (lukkede dager). ${ML ? `Historikken for trendlinjene: Binance-data fra ${n} ble notert, oppdatert ${ML.asOf}.` : 'Historikk for trendlinjene er ikke tilgjengelig akkurat nå.'} Et «brudd» regnes først når kursen lukker over/under – ikke bare stikker gjennom i løpet av dagen. Ingen nivåer er garantier.`));
+    if (tl.up && tl.up.now) items.push({ p: tl.up.now, kind: 'Stigende trendlinje', cls: 'up', n: tl.up.touches, text: 'Gjennom stigende bunner. Dagslukk under = faresignal.' });
+    if (tl.down && tl.down.now) items.push({ p: tl.down.now, kind: 'Fallende trendlinje', cls: 'down', n: tl.down.touches, text: 'Gjennom fallende topper. Dagslukk over kan bety at nedgangen er brutt.' });
+    if (t.ath && t.ath / px < 1.8 && t.dd < -0.005) items.push({ p: t.ath, kind: 'Rekorden', cls: 'ma', n: null, text: `Høyeste dagslukk (${my(t.athT)}). Over den finnes ingen tidligere selgere.` });
+    const above = items.filter(x => x.p >= px).sort((a, b) => b.p - a.p), below = items.filter(x => x.p < px).sort((a, b) => b.p - a.p);
+    const C = T.chart; let tmp = null; const showLine = (p, col) => { if (!C) return; if (tmp) { C.S.candle.removePriceLine(tmp); tmp = null; } if (p != null) tmp = C.S.candle.createPriceLine({ price: p, color: col, lineWidth: 2, lineStyle: 0, axisLabelVisible: true, title: '' }); };
+    const row = x => { const d = el('details', 'lv'), s2 = el('summary'), dot = el('span', 'dot ' + (x.cls === 'ma' ? '' : x.cls)), str = el('span', 'str');
+      if (x.n != null) str.append(...[1, 2, 3].map(k => el('i', k <= Math.min(3, x.n) ? 'on' : ''))); else str.append(el('span', 'tag', x.kind === 'Rekorden' ? 'topp' : 'snitt'));
+      s2.append(dot, el('span', 'nm', x.kind), el('span', 'p', price(x.p)), el('span', 'ds ' + (x.p > px ? 'down' : 'up'), dist(x.p)), str); d.append(s2, el('p', 'small', x.text));
+      s2.addEventListener('mouseenter', () => showLine(x.p, x.cls === 'up' ? css('--up') : x.cls === 'down' ? css('--down') : css('--blue'))); s2.addEventListener('mouseleave', () => showLine(null)); return d; };
+    const now = el('div', 'lv now'); now.append(el('span', 'dot'), el('span', 'nm', 'Kursen nå'), el('span', 'p', price(px)), el('span', 'ds'), el('span', 'str'));
+    box.replaceChildren(...above.map(row), now, ...below.map(row));
   }
 
-  // ---------------------------------------------------------------- avansert
-  function controls() {
-    const pb = document.getElementById('tm-period'); pb.replaceChildren(...Object.entries(PER).map(([k, [l]]) => { const b = el('button', null, l); b.type = 'button'; b.setAttribute('aria-pressed', k === T.per ? 'true' : 'false'); b.addEventListener('click', () => { T.per = k; save(); controls(); drawDetail(true); }); return b; }));
-    const ib = document.getElementById('tm-ind'); ib.replaceChildren(...Object.entries(IND).map(([k, [l]]) => { const lb = el('label', 'chip'); const i = el('input'); i.type = 'checkbox'; i.checked = !!T.ind[k]; i.addEventListener('change', () => { T.ind[k] = i.checked; save(); paint(); }); lb.append(i, document.createTextNode(l)); return lb; }));
-    const sb = document.getElementById('tm-subsel'); sb.replaceChildren(...[['none', 'Ingen'], ['rsi', 'RSI'], ['macd', 'MACD'], ['atr', 'Svingninger (ATR %)']].map(([k, l]) => { const b = el('button', null, l); b.type = 'button'; b.setAttribute('aria-pressed', k === T.sub ? 'true' : 'false'); b.addEventListener('click', () => { T.sub = k; save(); controls(); paint(); }); return b; }));
+  // ---------------------------------------------------------------- verktøylinje over grafen og periodelinje under (som i TradingView)
+  const btn = (txt, on, fn, title, c2) => { const b = el('button', 'tb' + (c2 ? ' ' + c2 : ''), txt); b.type = 'button'; if (on != null) b.setAttribute('aria-pressed', on ? 'true' : 'false'); if (title) b.title = title; b.addEventListener('click', fn); return b; };
+  function setTf(tf) { if (tf === T.tf) return; const C = T.chart; let from = null;
+    if (C && C.B) { const r = C.ch.timeScale().getVisibleLogicalRange(); if (r) { const i = Math.max(0, Math.min(C.B.length - 1, Math.round(r.from))); from = C.B[i].t; } }
+    const bars = from != null ? (Date.now() - from) / MS[tf] : 0; T.tf = tf; T.rng = null; T.view = bars >= 20 && bars <= 1500 ? { from } : { bars: 150 }; save(); controls(); drawDetail(true); }
+  function setRng(r) { T.rng = r; const [ms, def] = RNG[r], need = ms / MS[T.tf]; if (r === 'Alt' ? MS[T.tf] < MS['1d'] : need > 1500 || need < 20) T.tf = def;
+    T.view = { from: r === 'Alt' ? 0 : Date.now() - ms }; save(); controls(); if (T.chart && T.kl[key(T.sym, T.tf)] && T.chart.k === key(T.sym, T.tf)) applyView(); else drawDetail(true); }
+  function indMenu() {
+    const dd = el('div', 'dd'), b = btn('Indikatorer ▾', null, () => { p.hidden = !p.hidden; if (!p.hidden) { const r = b.getBoundingClientRect(); p.style.left = r.left + 330 > window.innerWidth ? 'auto' : '0'; p.style.right = r.left + 330 > window.innerWidth ? '0' : 'auto'; } }, 'Linjer og indikatorer i grafen');
+    const p = el('div', 'ddp'); p.hidden = true; b.setAttribute('aria-haspopup', 'true');
+    const ch = el('div', 'ddl'); Object.entries(IND).forEach(([k, [l]]) => { const lb = el('label'), i = el('input'); i.type = 'checkbox'; i.checked = !!T.ind[k]; i.addEventListener('change', () => { T.ind[k] = i.checked; save(); paint(); }); lb.append(i, document.createTextNode(' ' + l)); ch.append(lb); });
+    const sb = el('div', 'seg sm'); [['none', 'Ingen'], ['rsi', 'RSI'], ['macd', 'MACD'], ['atr', 'ATR %']].forEach(([k, l]) => { const x = el('button', null, l); x.type = 'button'; x.setAttribute('aria-pressed', k === T.sub ? 'true' : 'false'); x.addEventListener('click', () => { T.sub = k; save(); sb.querySelectorAll('button').forEach(y => y.setAttribute('aria-pressed', y === x ? 'true' : 'false')); paint(); }); sb.append(x); });
+    p.append(el('b', 'small', 'Vis i grafen'), ch, el('b', 'small', 'Panel under grafen'), sb);
+    document.addEventListener('pointerdown', e => { if (!p.hidden && !dd.contains(e.target)) p.hidden = true; });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') p.hidden = true; });
+    dd.append(b, p); return dd;
   }
-  function drawTF() {
-    const box = document.getElementById('tm-tf'), adv = document.getElementById('tm-adv'); if (!box || !adv.open || !T.sym) return; const sym = T.sym;
-    Promise.all(['1h', '4h'].map(tf => loadK(sym, tf))).then(() => { if (sym !== T.sym) return;
-      const t = el('table', 't'), hr = el('tr'); ['Tidsramme', 'Retning', 'Regelscore', 'RSI', 'ADX', 'Regime'].forEach((h, i) => hr.append(el('th', i === 0 || i === 5 ? 'l' : '', h))); t.append(hr);
-      for (const [tf, nm] of [['1h', '1 time'], ['4h', '4 timer'], ['1d', '1 dag']]) { const c = T.kl[key(sym, tf)], x = el('tr'); x.append(el('td', 'l', nm));
-        if (!c || !c.B) { const d = el('td', 'l muted', 'ikke tilgjengelig'); d.colSpan = 5; x.append(d); t.append(x); continue; }
-        const e = closedEnd(c.B), a = RG.assess(c.B.slice(Math.max(0, e - 499), e + 1)); if (!a.ok) { const d = el('td', 'l muted', a.why); d.colSpan = 5; x.append(d); t.append(x); continue; }
-        const b = { long: ['▲ opp', 'up'], short: ['▼ ned', 'down'], neutral: ['– nøytral', ''] }[a.bias];
-        x.append(el('td', b[1], b[0]), el('td', null, (a.score > 0 ? '+' : a.score < 0 ? '−' : '') + Math.abs(a.score) + ' av ±5'), el('td', null, nf(a.rsi, { maximumFractionDigits: 0 })), el('td', null, nf(a.adx, { maximumFractionDigits: 0 })), el('td', 'l', a.regime)); t.append(x); }
-      box.replaceChildren(el('p', 'muted small', 'Regelscore teller fem enkle regler (kurs over 50-linja, 20-linja over 50-linja, 50-linja stiger, MACD over 0, RSI over 50). Det er ikke en sannsynlighet, og slike kortsiktige signaler har ikke gitt fortjeneste i våre tester.'), t); });
+  function controls() {
+    const bar = document.getElementById('tm-tools'); if (!bar) return;
+    const g1 = el('div', 'tgroup'); g1.setAttribute('role', 'group'); g1.setAttribute('aria-label', 'Tidsramme for hvert lys');
+    Object.entries(TFL).forEach(([k, [s2, l]]) => g1.append(btn(s2, k === T.tf, () => setTf(k), `Hvert lys = ${l}`)));
+    if (!T.menu) T.menu = indMenu();
+    bar.replaceChildren(g1, ...(T.chart && T.chart.D ? [T.chart.D.toolbar()] : []), T.menu);
+    const rb = document.getElementById('tm-range'); if (!rb) return; const g2 = el('div', 'tgroup'); g2.setAttribute('role', 'group'); g2.setAttribute('aria-label', 'Periode');
+    Object.keys(RNG).forEach(r => g2.append(btn(r, r === T.rng, () => setRng(r), r === 'Alt' ? 'Hele historikken' : `Vis siste ${r}`)));
+    const g3 = el('div', 'tgroup'); g3.append(btn('log', T.log, () => { T.log = !T.log; save(); if (T.chart) T.chart.ch.priceScale('right').applyOptions({ mode: T.log ? 1 : 0 }); controls(); }, 'Loggskala: like store prosentbevegelser er like høye'),
+      btn('⤢', null, () => { if (T.chart) { T.chart.ch.priceScale('right').applyOptions({ autoScale: true }); T.view = T.rng ? { from: T.rng === 'Alt' ? 0 : Date.now() - RNG[T.rng][0] } : { bars: 150 }; applyView(); } }, 'Tilbakestill utsnittet'));
+    rb.replaceChildren(g2, g3);
   }
 
   // ---------------------------------------------------------------- inngang
   function drawDetail(reload) {
-    if (!T.built || !T.sym) return; const [, tf] = PER[T.per], n = names()[T.sym] || T.sym;
-    document.getElementById('tm-title').textContent = `${n} – siste ${PER[T.per][0]}`;
+    if (!T.built || !T.sym) return; const tf = T.tf, n = names()[T.sym] || T.sym;
+    document.getElementById('tm-title').textContent = `${n} · ${TFL[tf][0]}`;
     const L = live(T.sym), ph = document.getElementById('tm-price');
     ph.replaceChildren(...(L && L.p ? [el('b', null, price(L.p) + ' '), el('span', cls(L.chg), pct(L.chg / 100) + ' siste døgn')] : [el('span', 'muted', 'Pris ikke tilgjengelig')]));
-    if (reload) { status(); loadK(T.sym, tf, true).then(() => { paint(true); status(); }); if (tf !== '1d') loadK(T.sym, '1d').then(() => { paint(); drawExplain(); drawLevels(); }); if (tf !== '1w') loadK(T.sym, '1w').then(() => { paint(); drawLevels(); }); }
+    if (reload) { if (T.chart) T.chart.k = null; status(); loadK(T.sym, tf, true).then(() => { if (tf === T.tf) { paint(true); status(); } }); if (tf !== '1d') loadK(T.sym, '1d').then(() => { paint(); drawExplain(); drawLevels(); }); if (tf !== '1w') loadK(T.sym, '1w').then(() => { paint(); drawLevels(); });
+      if (T.chart && T.chart.D) T.chart.D.refresh(); }
     else { paint(); status(); }
-    drawExplain(); drawLevels(); drawTF(); poll();
+    drawExplain(); drawLevels(); poll();
   }
-  function poll() { clearTimeout(T.timer); const tf = PER[T.per][1]; T.timer = setTimeout(() => {
+  function poll() { clearTimeout(T.timer); const tf = T.tf; T.timer = setTimeout(() => {
     const vis = !document.getElementById('terminal').hidden; if (document.hidden || !vis) { poll(); return; }
-    tickK(T.sym, tf).then(() => { paint(); status(); poll(); }); loadDays(); }, POLL[tf]); }
+    tickK(T.sym, tf).then(() => { if (tf === T.tf) { paint(); status(); } poll(); }); loadDays(); }, POLL[tf]); }
   function render() {
     if (typeof RG === 'undefined') return; const p = dash.params(), L = list();
     if (p.coin && L.includes(p.coin) && p.coin !== T.sym) { T.sym = p.coin; if (T.built) drawDetail(true); }
     if (!T.sym) T.sym = L[0];
-    if (!T.built) { T.built = true; controls(); T.chart = makeChart(); if (!T.chart) document.getElementById('tm-status').textContent = 'Grafbiblioteket kunne ikke lastes.';
-      document.getElementById('tm-adv').addEventListener('toggle', drawTF);
+    if (!T.built) { T.built = true; T.chart = makeChart(); if (!T.chart) document.getElementById('tm-status').textContent = 'Grafbiblioteket kunne ikke lastes.'; controls();
       loadGlobal(); setInterval(() => { if (!document.hidden) loadGlobal(); }, 5 * 6e4); loadDays(true); drawDetail(true); }
     drawBar(); drawCoins(); drawExplain(); drawLevels();
     const L2 = live(T.sym), ph = document.getElementById('tm-price'); if (L2 && L2.p) ph.replaceChildren(el('b', null, price(L2.p) + ' '), el('span', cls(L2.chg), pct(L2.chg / 100) + ' siste døgn'));
