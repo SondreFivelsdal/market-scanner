@@ -7,6 +7,14 @@ let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FEIL:', m)
 const MK = process.env.EVENTS_MOCK; const mk = n => JSON.parse(fs.readFileSync(path.join(MK, n + '.json'), 'utf8'));
 // 1) valgdager
 ok(EV.iso(EV.electionDay(2022)) === '2022-11-08' && EV.iso(EV.electionDay(2018)) === '2018-11-06' && EV.iso(EV.electionDay(2026)) === '2026-11-03' && EV.iso(EV.electionDay(2024)) === '2024-11-05', 'valgdager');
+// 1b) kalender: Thanksgiving, påske, Labor Day og måneder
+{ const cal = EV.compute({ assets: {}, macro: {}, now: Date.UTC(2026, 10, 27) }), d = id => cal.events.find(e => e.id === id).dates;
+  ok(d('thanksgiving').includes('2024-11-28') && d('thanksgiving').includes('2026-11-26') && d('thanksgiving').includes('2018-11-22'), 'Thanksgiving: 22.11.2018, 28.11.2024, 26.11.2026');
+  ok(d('black_friday').includes('2026-11-27'), 'Black Friday 2026 = 27. november');
+  ok(d('easter').includes('2024-03-31') && d('easter').includes('2025-04-20') && d('easter').includes('2019-04-21'), 'påske: 2019, 2024, 2025');
+  ok(d('labor_day').includes('2025-09-01') && d('labor_day').includes('2026-09-07'), 'Labor Day 2025 og 2026');
+  ok(d('m11').includes('2026-11-01') && !d('m12').includes('2026-12-01'), 'måneder: bare datoer som har skjedd');
+  ok(cal.cats.kalender && cal.cats.maned, 'nye kategorier finnes'); }
 // 2) Fed-regler på en kjent rekke beslutninger
 const ch = EV.fedChanges([], mk('fred_DFEDTARU')); const F = EV.fedEvents(ch, EV.D('2026-11-16'));
 const has = (a, s) => a.map(EV.iso).includes(s);

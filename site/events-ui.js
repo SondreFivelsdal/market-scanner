@@ -15,8 +15,11 @@
   const quant = (a, q) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y), x = q * (s.length - 1), lo = Math.floor(x), hi = Math.ceil(x); return s[lo] + (s[hi] - s[lo]) * (x - lo); };
   const HZ = [[7, '1 uke'], [30, '1 måned'], [91, '3 måneder'], [182, '6 måneder'], [365, '1 år'], [730, '2 år']];
   const VIEW = { 30: '1 mnd', 91: '3 mnd', 182: '6 mnd', 365: '1 år', 730: '2 år' };
-  const S = { ev: 'fed_first_hike', a: 'BTC', h: 365, pre: 0, q: '', hl: null, built: false, sel: new Set(), med: true, now: true };
+  const S = { ev: 'fed_first_hike', a: 'BTC', h: 365, pre: 30, q: '', hl: null, built: false, sel: new Set(), med: true, now: true, sort: 'imp', cat: '', tlc: new Set() };
   const PRE = { 0: 'Ingen', 30: '30 dager', 91: '3 mnd' };
+  const PRESETS = [[7, 7], [30, 30], [90, 90], [180, 180], [30, 365], [0, 730]];
+  const hLab = h => h % 365 === 0 ? `${h / 365} år` : h >= 60 && h % 30 < 3 ? `${Math.round(h / 30.4)} mnd` : `${h} d`;
+  const clampN = (v, lo, hi, d) => { v = Math.round(+v); return isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d; };
   const E = () => { const d = dash.data('events'); return d.status === 'ok' ? d.data : d.status === 'error' ? { err: true } : null; };
   const series = {}; // dekodet kursserie per marked
   function ser(m, k) { if (series[k]) return series[k]; const A = m.assets[k]; if (!A) return null; const t = new Int32Array(A.t.length); let p = 0; for (let i = 0; i < A.t.length; i++) { p += A.t[i]; t[i] = p; } return (series[k] = { t, c: A.c, name: A.name, from: A.from, to: A.to, src: A.src, last: t[t.length - 1] }); }
@@ -42,9 +45,9 @@
 
   // ---------------------------------------------------------------- søk
   const norm = s => s.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9æøå&% ]/g, ' ');
-  function search(m, q) { const toks = norm(q).split(/\s+/).filter(Boolean); if (!toks.length) return [];
-    return m.events.map(e => { const hay = norm([e.name, ...(e.syn || []), m.cats[e.cat] || ''].join(' ')); let sc = 0; for (const t of toks) { if (!hay.includes(t)) return null; sc += norm(e.name).includes(t) ? 2 : 1; } return { e, sc }; }).filter(Boolean).sort((a, b) => b.sc - a.sc).slice(0, 8).map(x => x.e); }
-  function pick(id) { S.ev = id; S.q = ''; S.hl = null; S.sel.clear(); dash.setParams({ ev: id }); }
+  function search(m, q, max = 8) { const toks = norm(q).split(/\s+/).filter(Boolean); if (!toks.length) return [];
+    return m.events.map(e => { const hay = norm([e.name, ...(e.syn || []), m.cats[e.cat] || ''].join(' ')); let sc = 0; for (const t of toks) { if (!hay.includes(t)) return null; sc += norm(e.name).includes(t) ? 2 : 1; } return { e, sc }; }).filter(Boolean).sort((a, b) => b.sc - a.sc).slice(0, max).map(x => x.e); }
+  function pick(id) { S.ev = id; S.hl = null; S.sel.clear(); dash.setParams({ ev: id }); }
 
   // ---------------------------------------------------------------- klikkbar forklaring under grafene
   // Trykk på et år = vis bare det året (trykk igjen = alle). Shift/Ctrl-trykk = legg til flere. «I dag» og «Median» slås av/på.
@@ -53,7 +56,7 @@
       const i = el('i'); i.style.borderTopColor = x.color; if (x.dash) i.style.borderTopStyle = 'dashed'; b.append(i, document.createTextNode(x.label)); b.addEventListener('click', ev => onClick(x.key, ev)); box.append(b); }
     return box; }
   const multi = ev => ev.shiftKey || ev.ctrlKey || ev.metaKey;
-  function soloSel(set, k, ev) { if (multi(ev)) { set.has(k) ? set.delete(k) : set.add(k); return; } if (set.size === 1 && set.has(k)) set.clear(); else { set.clear(); set.add(k); } }
+  function soloSel(set, k) { set.has(k) ? set.delete(k) : set.add(k); } // tomt utvalg = alle vises; trykk legger til eller fjerner
 
   // ---------------------------------------------------------------- graf
   // Viser: tidligere tilfeller (alle eller valgte år), medianen og «i dag» (det pågående tilfellet).
@@ -73,8 +76,8 @@
     const X = k => P.l + (k + PN) / (H + PN) * w, Y = r => P.t + (hi - Math.log(Math.max(r, 1e-6))) / (hi - lo) * h, clampY = r => Math.max(P.t, Math.min(P.t + h, Y(r)));
     const ticks = [0.1, 0.25, 0.5, 0.67, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 2, 3, 5, 10, 20, 50].filter(r => Math.log(r) >= lo && Math.log(r) <= hi);
     for (const r of ticks) { s.append(sv('line', { x1: P.l, x2: P.l + w, y1: Y(r), y2: Y(r), stroke: r === 1 ? css('--axis') : css('--grid'), 'stroke-width': r === 1 ? 1.2 : 1 })); const t = sv('text', { x: P.l - 8, y: Y(r) + 4, 'text-anchor': 'end', class: 'ax' }); t.textContent = pct(r); s.append(t); }
-    const xt0 = H <= 31 ? [0, 7, 14, 21, 30] : H <= 91 ? [0, 30, 60, 91] : H <= 182 ? [0, 30, 91, 182] : H <= 365 ? [0, 30, 91, 182, 273, 365] : [0, 91, 182, 365, 547, 730];
-    const xt = [...(PN ? [-PN] : []), ...xt0.filter(k => !PN || k === 0 || k >= H * 0.15)]; for (const k of xt) { const t = sv('text', { x: X(k), y: Hh - 8, 'text-anchor': k === -PN ? 'start' : k === H ? 'end' : 'middle', class: 'ax' }); t.textContent = k === 0 ? 'Dag 0' : `${k} d`; s.append(t); }
+    const stp = [1, 2, 7, 14, 30, 61, 91, 182, 365].find(x => H / x <= 6) || 365, xt0 = []; for (let k = 0; k <= H; k += stp) xt0.push(k); if (H - xt0[xt0.length - 1] > stp * 0.4) xt0.push(H);
+    const xt = [...(PN ? [-PN] : []), ...xt0.filter(k => !PN || k === 0 || k >= H * 0.15)]; for (const k of xt) { const t = sv('text', { x: X(k), y: Hh - 8, 'text-anchor': k === -PN ? 'start' : k === H ? 'end' : 'middle', class: 'ax' }); t.textContent = k === 0 ? 'Dag 0' : k < 0 ? `−${-k} d` : `${k} d`; s.append(t); }
     if (PN) s.append(sv('line', { x1: X(0), x2: X(0), y1: P.t, y2: P.t + h, stroke: css('--axis'), 'stroke-width': 1.2 }));
     if (cur && S.now && cur.avail <= H) s.append(sv('line', { x1: X(cur.avail), x2: X(cur.avail), y1: P.t, y2: P.t + h, stroke: css('--blue'), 'stroke-dasharray': '2 4', opacity: 0.6 }));
     const line = r => { let d = '', pen = false; for (let k = -PN; k <= H; k += (H + PN > 400 ? 2 : 1)) { const v = val(r, k); if (v === undefined) { pen = false; continue; } d += (pen ? 'L' : 'M') + X(k).toFixed(1) + ' ' + clampY(v).toFixed(1); pen = true; } return d; };
@@ -109,7 +112,7 @@
     items.push({ key: 'med', label: `Median (${medRows.length})`, color: css('--fg'), dash: true, on: S.med });
     for (const r of [...done].reverse()) items.push({ key: r.d, label: lbl(r, res.rows), color: colOf.get(r.d) || (r.path[Math.min(H, r.path.length - 1)] >= 1 ? css('--up') : css('--down')), on: !selOn || S.sel.has(r.d), solo: S.sel.size === 1 && S.sel.has(r.d), title: 'Trykk for å vise bare dette året. Shift-trykk for å velge flere.' });
     const lg = legendBtns(items, (k, ev) => { if (k === 'now') S.now = !S.now; else if (k === 'med') S.med = !S.med; else soloSel(S.sel, k, ev); box.dispatchEvent(new CustomEvent('redraw', { bubbles: true })); });
-    box.append(lg, el('p', 'muted small', selOn ? 'Trykk på året igjen (eller «Vis alle») for å se alle.' : 'Trykk på et år – eller en linje i grafen – for å se bare det året.')); return box;
+    box.append(lg, el('p', 'muted small', selOn ? `${S.sel.size} valgt – trykk flere år for å sammenligne, eller trykk et valgt år for å fjerne det.` : 'Trykk på år (eller linjer) for å velge dem – velg flere for å sammenligne.')); return box;
   }
   // over grafen: «Vis alle» når et utvalg er aktivt, og forslag: hvilke tidligere år har kurven mest lik i dag?
   function simCases(cur, done) { const k = cur ? cur.avail : 0; if (!cur || k < 14) return [];
@@ -252,8 +255,8 @@
     items.push({ key: 'med', label: `Median (${medRows.length})`, color: css('--fg'), dash: true, on: HS.med });
     for (const r of [...past].reverse()) items.push({ key: r.h, label: hYear(r), color: colOf(r), on: !HS.off.has(r.h), solo: solo && !HS.off.has(r.h), title: 'Trykk for å vise bare denne syklusen. Shift-trykk for å slå av/på.' });
     const lg = legendBtns(items, (k, ev) => { if (k === 'cur' || multi(ev)) { HS.off.has(k) ? HS.off.delete(k) : HS.off.add(k); } else if (k === 'med') HS.med = !HS.med;
-      else { const only = solo && !HS.off.has(k); past.forEach(r => { if (only || r.h === k) HS.off.delete(r.h); else HS.off.add(r.h); }); } redraw(); });
-    const wrap = el('div', 'stack'); wrap.style.gap = '6px'; wrap.append(el('p', 'muted small', 'Loggskala, 0 % = kursen 540 dager før halveringen. Trykk på et år under grafen for å se bare det.'), box, lg); return wrap;
+      else { const none = !past.some(r => HS.off.has(r.h)); if (none) past.forEach(r => { if (r.h !== k) HS.off.add(r.h); }); else { HS.off.has(k) ? HS.off.delete(k) : HS.off.add(k); if (past.every(r => HS.off.has(r.h))) past.forEach(r => HS.off.delete(r.h)); } } redraw(); });
+    const wrap = el('div', 'stack'); wrap.style.gap = '6px'; wrap.append(el('p', 'muted small', 'Loggskala, 0 % = kursen 540 dager før halveringen. Trykk år under grafen for å velge – velg flere for å sammenligne.'), box, lg); return wrap;
   }
 
   // ---------------------------------------------------------------- «Grafer som ligner på i dag»: søker gjennom hele kurshistorikken
@@ -310,42 +313,98 @@
     const root = document.getElementById('hendelser-in'); if (!root) return; const m = E();
     if (!m) { root.replaceChildren(el('p', 'muted', 'Henter historikk …')); return; }
     if (m.err || !m.events) { root.replaceChildren(el('div', 'card', 'Hendelsesdataene er ikke tilgjengelige akkurat nå. De bygges automatisk ved neste oppdatering.')); return; }
-    const p = dash.params(); if (p.ev && m.events.some(e => e.id === p.ev)) S.ev = p.ev; if (p.a && m.assets[p.a]) S.a = p.a; if (p.h && VIEW[p.h]) S.h = +p.h; if (p.pre != null && PRE[p.pre] != null) S.pre = +p.pre;
-    if (!S.built) { S.built = true; root.replaceChildren(searchBox(m), el('div', 'stack', null), el('div', 'stack', null), el('div', 'stack', null)); root.children[1].id = 'ev-ctl'; root.children[2].id = 'ev-res'; root.children[2].style.gap = '20px'; root.children[3].id = 'ev-like'; }
-    controls(m); const sig = `${S.a}|${m.built}`; if (S.likeSig !== sig || !document.getElementById('ev-like').childElementCount) { S.likeSig = sig; LK.sel.clear(); like(m); } result(m);
+    const p = dash.params(); if (p.ev && m.events.some(e => e.id === p.ev)) S.ev = p.ev; if (p.a && m.assets[p.a]) S.a = p.a; if (p.h != null) S.h = clampN(p.h, 7, 1460, 365); if (p.pre != null) S.pre = clampN(p.pre, 0, 730, 30);
+    if (!S.built) { S.built = true; const side = el('aside', 'evside'); side.id = 'ev-side'; const main = el('div', 'evmain'); const c = el('div', 'evctl2'); c.id = 'ev-ctl'; const r = el('div', 'stack'); r.id = 'ev-res'; r.style.gap = '12px'; const lk = el('div'); lk.id = 'ev-like';
+      main.append(c, r, lk); const lay = el('div', 'evlayout'); lay.append(side, main); root.replaceChildren(lay); }
+    sidebar(m); controls(m); const sig = `${S.a}|${m.built}`; if (S.likeSig !== sig || !document.getElementById('ev-like').childElementCount) { S.likeSig = sig; LK.sel.clear(); like(m); } result(m);
   }
-  function searchBox(m) {
-    const card = el('div', 'card'); const lab = el('label', 'stack'); lab.style.gap = '6px'; lab.append(el('b', null, 'Søk etter en hendelse'));
-    const inp = el('input', 'evsearch'); inp.type = 'search'; inp.placeholder = 'F.eks. renteheving, midtvalg, 200-ukers, krig, VIX, halvering …'; inp.autocomplete = 'off'; inp.setAttribute('aria-controls', 'ev-sugg'); lab.append(inp);
-    const sug = el('div', 'evsugg'); sug.id = 'ev-sugg'; sug.setAttribute('role', 'listbox');
-    const show = () => { const r = search(m, inp.value); sug.replaceChildren(...r.map(e => { const b = el('button', 'evopt'); b.type = 'button'; b.setAttribute('role', 'option'); b.append(el('b', null, e.name), el('span', 'muted small', ' · ' + m.cats[e.cat])); b.addEventListener('click', () => { inp.value = ''; sug.replaceChildren(); pick(e.id); }); return b; }));
-      if (inp.value.trim() && !r.length) sug.append(el('p', 'muted small', 'Ingen treff. Prøv et annet ord, eller bla i listen under.')); };
-    inp.addEventListener('input', show); inp.addEventListener('keydown', e => { if (e.key === 'Enter') { const r = search(m, inp.value); if (r[0]) { inp.value = ''; sug.replaceChildren(); pick(r[0].id); } } if (e.key === 'Escape') { inp.value = ''; sug.replaceChildren(); } });
-    const all = el('details', 'more'); all.append(el('summary', null, `Alle hendelser (${m.events.length})`)); const inn = el('div', 'in');
-    for (const [c, cn] of Object.entries(m.cats)) { const es = m.events.filter(e => e.cat === c); if (!es.length) continue; const g = el('div', 'stack'); g.style.gap = '6px'; g.append(el('b', null, cn)); const ch = el('div', 'chips');
-      es.forEach(e => { const b = el('button', 'chip', e.name); b.type = 'button'; b.dataset.ev = e.id; b.addEventListener('click', () => { all.open = false; pick(e.id); window.scrollTo({ top: card.getBoundingClientRect().top + window.scrollY - 70, behavior: 'smooth' }); }); ch.append(b); }); g.append(ch); inn.append(g); }
-    all.append(inn); card.append(lab, sug, all); return card;
+  // ---------------------------------------------------------------- sidepanelet: søk, kategori, sortering og liste
+  const QS = { key: null, v: {} };
+  function quick(m, id) { // median endring etter S.h dager og antall tilfeller, for valgt marked
+    const k = `${S.a}|${S.h}|${m.built}`; if (QS.key !== k) { QS.key = k; QS.v = {}; } if (QS.v[id]) return QS.v[id];
+    const T = ser(m, S.a), ds = T ? datesFor(m, id, S.a) : [], v = [];
+    for (const d of ds) { const i0 = at(T, d - 1) + 1; if (i0 >= T.t.length || T.t[i0] - d > 6 || T.last - T.t[i0] < S.h) continue; const j = at(T, T.t[i0] + S.h); v.push(T.c[j] / T.c[i0]); }
+    return (QS.v[id] = { n: v.length, med: quant(v, 0.5), all: ds.length, last: ds.length ? ds[ds.length - 1] : null });
   }
+  function sidebar(m) {
+    const side = document.getElementById('ev-side'); if (!side) return;
+    if (!side.dataset.b) { side.dataset.b = 1;
+      const inp = el('input', 'evsearch'); inp.type = 'search'; inp.placeholder = 'Søk: thanksgiving, halvering, FTX …'; inp.setAttribute('aria-label', 'Søk etter hendelse'); inp.value = S.q;
+      inp.addEventListener('input', () => { S.q = inp.value; list(m); });
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') { const f = side.querySelector('.evi'); if (f) f.click(); } });
+      const cs = el('select', 'evsel'); cs.setAttribute('aria-label', 'Kategori'); cs.append(new Option('Alle kategorier', '')); for (const [c, n] of Object.entries(m.cats)) cs.append(new Option(n, c)); cs.value = S.cat; cs.addEventListener('change', () => { S.cat = cs.value; list(m); });
+      const so = el('select', 'evsel'); so.setAttribute('aria-label', 'Sorter'); [['imp', 'Viktigst'], ['new', 'Nyeste'], ['best', 'Best etter'], ['worst', 'Svakest etter'], ['n', 'Flest tilfeller'], ['az', 'A–Å']].forEach(([v, l]) => so.append(new Option(l, v))); so.value = S.sort; so.addEventListener('change', () => { S.sort = so.value; list(m); });
+      const f = el('div', 'evfil'); f.append(cs, so); const ls = el('div', 'evlist'); ls.id = 'ev-list'; ls.setAttribute('role', 'listbox');
+      side.append(inp, f, ls); }
+    list(m);
+  }
+  function list(m) {
+    const box = document.getElementById('ev-list'); if (!box) return; const q = S.q.trim();
+    let es = q ? search(m, q, 999) : m.events.slice(); if (S.cat) es = es.filter(e => e.cat === S.cat);
+    const st = e => quick(m, e.id), nn = x => x == null ? -Infinity : x;
+    const cmp = { imp: (a, b) => (b.imp || 2) - (a.imp || 2) || nn(st(b).last) - nn(st(a).last), new: (a, b) => nn(st(b).last) - nn(st(a).last), best: (a, b) => nn(st(b).med) - nn(st(a).med), worst: (a, b) => nn(-st(b).med) - nn(-st(a).med) || 0, n: (a, b) => st(b).all - st(a).all, az: (a, b) => a.name.localeCompare(b.name, 'nb') }[S.sort];
+    if (!q || S.sort !== 'imp') es.sort(cmp);
+    const head = el('div', 'evlh'); head.append(el('span', null, `${es.length} hendelser`), el('span', null, `${m.assets[S.a] ? m.assets[S.a].name : ''} · ${hLab(S.h)} etter`));
+    const items = es.map(e => { const x = st(e), b = el('button', 'evi' + (e.id === S.ev ? ' on' : '')); b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', e.id === S.ev ? 'true' : 'false');
+      const imp = el('span', 'imp'); imp.append(...[1, 2, 3].map(k => el('i', k <= (e.imp || 2) ? 'on' : ''))); imp.title = ['', 'Lav', 'Middels', 'Høy'][e.imp || 2] + ' viktighet';
+      const nm = el('span', 'nm'); nm.append(el('span', null, e.name), el('small', null, `${m.cats[e.cat]}${x.last != null ? ' · sist ' + new Date(x.last * DAY).getUTCFullYear() : ''}`));
+      const r = el('span', 'rt'); r.append(el('b', cls(x.med), x.n ? pct(x.med) : '–'), el('small', null, x.n ? `n=${x.n}` : 'ingen'));
+      b.append(imp, nm, r); b.addEventListener('click', () => pick(e.id)); return b; });
+    box.replaceChildren(head, ...items, ...(items.length ? [] : [el('p', 'muted small', 'Ingen treff.')]));
+    const on = box.querySelector('.evi.on'); if (on && !box.dataset.sc) { box.dataset.sc = 1; on.scrollIntoView({ block: 'nearest' }); }
+  }
+  // ---------------------------------------------------------------- verktøylinje: marked og vindu (dager før/etter)
   function controls(m) {
     const box = document.getElementById('ev-ctl'); if (!box) return;
-    const segA = el('div', 'seg'); segA.setAttribute('role', 'group'); segA.setAttribute('aria-label', 'Velg marked');
-    m.order.forEach(k => { const b = el('button', null, m.assets[k].name); b.type = 'button'; b.setAttribute('aria-pressed', k === S.a ? 'true' : 'false'); b.addEventListener('click', () => { S.a = k; S.hl = null; S.sel.clear(); dash.setParams({ a: k }); }); segA.append(b); });
-    const segH = el('div', 'seg'); segH.setAttribute('role', 'group'); segH.setAttribute('aria-label', 'Tidsrom i grafen');
-    Object.entries(VIEW).forEach(([h, l]) => { const b = el('button', null, l); b.type = 'button'; b.setAttribute('aria-pressed', +h === S.h ? 'true' : 'false'); b.addEventListener('click', () => { S.h = +h; dash.setParams({ h }); }); segH.append(b); });
-    const segP = el('div', 'seg'); segP.setAttribute('role', 'group'); segP.setAttribute('aria-label', 'Vis også før hendelsen');
-    Object.entries(PRE).forEach(([n, l]) => { const b = el('button', null, l); b.type = 'button'; b.setAttribute('aria-pressed', +n === S.pre ? 'true' : 'false'); b.addEventListener('click', () => { S.pre = +n; dash.setParams({ pre: n }); }); segP.append(b); });
-    const r3 = el('div', 'stack'); r3.style.gap = '6px'; r3.append(el('span', 'muted small', 'Vis også før hendelsen'), segP);
-    const r1 = el('div', 'stack'); r1.style.gap = '6px'; r1.append(el('span', 'muted small', 'Marked'), segA); const r2 = el('div', 'stack'); r2.style.gap = '6px'; r2.append(el('span', 'muted small', 'Vis i grafen'), segH);
-    const row = el('div', 'evctl'); row.append(r2, r3); const jl = el('a', 'small', 'Grafer som ligner på i dag ↓'); jl.href = '#'; jl.addEventListener('click', e => { e.preventDefault(); const t = document.getElementById('ev-like'); if (t) t.scrollIntoView({ behavior: 'smooth' }); });
-    box.replaceChildren(r1, row, jl);
-    document.querySelectorAll('#hendelser-in .chip[data-ev]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ev === S.ev ? 'true' : 'false'));
+    const sel = el('select', 'evsel'); sel.setAttribute('aria-label', 'Marked'); const KN = { krypto: 'Krypto', aksjer: 'Aksjer og indekser', 'råvarer': 'Edelmetaller og råvarer' };
+    for (const [kd, kn] of Object.entries(KN)) { const g = document.createElement('optgroup'); g.label = kn; m.order.filter(k => m.assets[k].kind === kd).forEach(k => g.append(new Option(m.assets[k].name, k))); if (g.children.length) sel.append(g); }
+    sel.value = S.a; sel.addEventListener('change', () => { S.a = sel.value; S.hl = null; S.sel.clear(); dash.setParams({ a: S.a }); });
+    const num = (lab, v, lo, hi, f) => { const l = el('label', 'evnum'); const i = el('input'); i.type = 'number'; i.min = lo; i.max = hi; i.value = v; i.inputMode = 'numeric'; i.setAttribute('aria-label', lab + ' (dager)');
+      i.addEventListener('change', () => f(clampN(i.value, lo, hi, v))); l.append(el('span', null, lab), i, el('span', 'muted', 'd')); return l; };
+    const before = num('Før', S.pre, 0, 730, v => { S.pre = v; dash.setParams({ pre: v }); }), after = num('Etter', S.h, 7, 1460, v => { S.h = v; dash.setParams({ h: v }); });
+    const pr = el('div', 'tgroup'); PRESETS.forEach(([b, a]) => { const x = el('button', 'tb', a === b ? `±${a}d` : `${b}/${a}d`); x.type = 'button'; x.title = `${b} dager før, ${a} dager etter`; x.setAttribute('aria-pressed', S.pre === b && S.h === a ? 'true' : 'false'); x.addEventListener('click', () => { S.pre = b; S.h = a; dash.setParams({ pre: b, h: a }); }); pr.append(x); });
+    const jl = el('a', 'small', 'Lignende kurver ↓'); jl.href = '#'; jl.addEventListener('click', e => { e.preventDefault(); const t = document.getElementById('ev-like'); if (t) t.scrollIntoView({ behavior: 'smooth' }); });
+    box.replaceChildren(sel, el('span', 'tsep'), before, after, pr, el('span', 'grow'), jl);
+  }
+  // ---------------------------------------------------------------- tidslinje: hele kurshistorikken med markører for hver gang hendelsen skjedde
+  function timeline(m, e, res, A) {
+    const LW = window.LightweightCharts, card = el('div', 'card tight'); if (!LW || !res) return card;
+    const hd = el('div', 'row'); hd.append(el('h3', null, `${A.name} – ${e.name}`)); const tg = el('div', 'tgroup'); hd.append(tg); card.append(hd);
+    const host = el('div', 'evtl'); const tip = el('div', 'evtip'); tip.hidden = true; host.append(tip); card.append(host);
+    const T = res.T, CC = { fed: '#5b8def', syklus: '#a16207', kalender: '#8a8780', maned: '#8a8780', onchain: '#d6336c', krypto: '#9c27b0', teknisk: '#2aa198', makro: '#c2362c' };
+    const OTH = [['makro', 'Kriser'], ['fed', 'Fed'], ['krypto', 'Krypto'], ['onchain', 'On-chain']];
+    OTH.forEach(([c, l]) => { const b = el('button', 'tb', l); b.type = 'button'; b.title = `Vis også viktige ${l.toLowerCase()}-hendelser`; b.setAttribute('aria-pressed', S.tlc.has(c) ? 'true' : 'false'); b.addEventListener('click', () => { S.tlc.has(c) ? S.tlc.delete(c) : S.tlc.add(c); b.setAttribute('aria-pressed', S.tlc.has(c) ? 'true' : 'false'); marks(); }); tg.append(b); });
+    requestAnimationFrame(() => {
+      const ch = LW.createChart(host, { autoSize: true, localization: { locale: 'nb-NO', dateFormat: 'dd.MM.yy' }, layout: { background: { type: 'solid', color: css('--panel') }, textColor: css('--muted'), fontFamily: getComputedStyle(document.body).fontFamily, fontSize: 11 },
+        grid: { vertLines: { visible: false }, horzLines: { color: css('--grid') } }, rightPriceScale: { borderColor: css('--line'), mode: 1 }, timeScale: { borderColor: css('--line') }, crosshair: { mode: 0 } });
+      const ln = ch.addAreaSeries({ lineColor: css('--fg'), topColor: 'rgba(127,127,127,.16)', bottomColor: 'rgba(127,127,127,0)', lineWidth: 1.5, priceLineVisible: false, priceFormat: { type: 'price', precision: T.c[T.c.length - 1] < 10 ? 3 : 0, minMove: T.c[T.c.length - 1] < 10 ? 0.001 : 1 } });
+      ln.setData(Array.from(T.t, (d, i) => ({ time: d * 86400, value: T.c[i] })));
+      const info = new Map();
+      window.__evMarks = marks;
+      function marks() { info.clear(); const mk = [];
+        for (const r of res.rows) { const iso = isoD(r.d), lab = e.labels && e.labels[iso]; info.set(r.d0 * 86400, { n: e.name, d: r.d, c: m.cats[e.cat], t: lab || e.desc, me: true });
+          mk.push({ time: r.d0 * 86400, position: 'aboveBar', shape: 'arrowDown', color: S.sel.size && !S.sel.has(r.d) ? css('--axis') : css('--blue'), text: String(new Date(r.d * DAY).getUTCFullYear()) }); }
+        for (const o of m.events) { if (o.id === e.id || !S.tlc.has(o.cat) || (o.imp || 2) < 3 || !o.dates) continue;
+          for (const ds of o.dates) { const d = dOf(ds), i = at(T, d - 1) + 1; if (i >= T.t.length || T.t[i] - d > 6) continue; const tm = T.t[i] * 86400; if (info.has(tm)) continue;
+            info.set(tm, { n: o.name, d, c: m.cats[o.cat], t: (o.labels && o.labels[ds]) || o.desc }); mk.push({ time: tm, position: 'belowBar', shape: 'circle', color: CC[o.cat] || css('--axis'), size: 0.6 }); } }
+        mk.sort((a, b) => a.time - b.time); ln.setMarkers(mk); }
+      marks();
+      ch.subscribeCrosshairMove(p => { if (!p || p.time == null || !p.point) { tip.hidden = true; return; } let best = null, bd = 1e9; for (const [tm, x] of info) { const xx = ch.timeScale().timeToCoordinate(tm); if (xx == null) continue; const dd = Math.abs(xx - p.point.x); if (dd < bd) { bd = dd; best = x; } }
+        if (!best || bd > 8) { tip.hidden = true; return; } tip.hidden = false; tip.replaceChildren(el('b', null, best.n), el('span', 'muted', `${dmy(best.d)} · ${best.c}`), el('span', null, best.t)); tip.style.left = Math.min(host.clientWidth - 260, Math.max(0, p.point.x + 12)) + 'px'; });
+      ch.subscribeClick(p => { if (!p || p.time == null) return; let best = null, bd = 1e9; for (const r of res.rows) { const dd = Math.abs(r.d0 * 86400 - p.time); if (dd < bd) { bd = dd; best = r; } } if (best && bd < 86400 * 20 && best.avail >= 730) { soloSel(S.sel, best.d); host.dispatchEvent(new CustomEvent('redraw', { bubbles: true })); marks(); } });
+      const last = T.t[T.t.length - 1]; ch.timeScale().setVisibleRange({ from: Math.max(T.t[0], (res.rows.length ? res.rows[0].d0 : last) - 120) * 86400, to: last * 86400 });
+      card._focus = d => ch.timeScale().setVisibleRange({ from: (d - S.pre - 30) * 86400, to: Math.min(last, d + S.h + 30) * 86400 });
+      card._marks = marks;
+    });
+    return card;
   }
   function result(m) {
     const box = document.getElementById('ev-res'); if (!box) return; const e = m.events.find(x => x.id === S.ev); if (!e) return;
-    const res = study(m, S.ev, S.a, 730, S.pre), T = res && res.T, A = m.assets[S.a];
-    const head = el('div', 'card'); const hr = el('div', 'stack'); hr.style.gap = '4px';
-    hr.append(el('span', 'muted', `${m.cats[e.cat]} · ${A.name}`), el('h2', null, `Hva skjedde med ${A.name} etter «${e.name.toLowerCase()}»?`), el('p', null, e.desc));
-    if (e.hindsight) hr.append(el('div', 'note', 'Denne hendelsen vet man først i etterkant. Den er nyttig for å forstå historien, men du kunne ikke handlet på den i sanntid.'));
+    const res = study(m, S.ev, S.a, Math.max(730, S.h), S.pre), T = res && res.T, A = m.assets[S.a];
+    const head = el('div', 'card tight'); const hr = el('div', 'stack'); hr.style.gap = '2px';
+    const ttl = el('div', 'row'); ttl.append(el('h2', null, e.name), el('span', 'muted small', `${m.cats[e.cat]} · ${A.name}`)); const ds = el('details', 'evdesc'); ds.append(el('summary', null, e.desc.length > 110 ? e.desc.slice(0, 108).replace(/\s+\S*$/, '') + ' …' : e.desc)); if (e.desc.length > 110) ds.append(el('p', 'small', e.desc));
+    hr.append(ttl, ds);
+    if (e.hindsight) hr.append(el('span', 'pill warn', 'Kjent først i etterkant'));
     head.append(hr);
     if (!res || !res.rows.length) { const all = datesFor(m, S.ev, S.a); head.append(el('p', 'muted', all.length ? `Hendelsen har skjedd ${all.length} ganger, men ingen av gangene er innenfor kursdataene for ${A.name} (data fra ${dmy(dOf(A.from))}).` : `Ingen tilfeller funnet for ${A.name}.`)); box.replaceChildren(head); return; }
     const rows = res.rows, lastRow = rows[rows.length - 1], cur = lastRow && lastRow.avail < 730 ? lastRow : null; // pågående: siste gang er under 2 år siden
@@ -366,7 +425,7 @@
     if (st.nFull) kp.append(kpi('Typisk verste fall underveis', pct(st.mn), 'down', 'Laveste kurs det første året (median)'), kpi('Typisk dag for laveste punkt', `Dag ${Math.round(st.mnD)}`, '', `ca. ${Math.round(st.mnD / 30.4)} mnd etter hendelsen`), kpi('Typisk høyeste underveis', pct(st.mx), 'up', 'Høyeste kurs det første året (median)'));
     const stc = el('div', 'card'); stc.append(el('h3', null, 'Hvordan gikk det etterpå?'), tw); if (st.nFull) stc.append(kp);
     // graf
-    const gc = el('div', 'card'); gc.append(el('h3', null, `Kursen dag for dag etter hendelsen (${VIEW[S.h]})`), el('p', 'muted small', 'Loggskala: like store prosentbevegelser er like høye. Pek i grafen for å se tallene.'));
+    const gc = el('div', 'card'); gc.append(el('h3', null, `Sammenligning: dag 0 = hendelsen (${S.pre ? S.pre + ' d før, ' : ''}${hLab(S.h)} etter)`), el('p', 'muted small', 'Alle tilfeller satt til 0 % på dag 0 · loggskala · pek for tall.'));
     const gslot = el('div', 'stack'); gslot.style.gap = '12px'; gc.append(gslot); let ch = null; const cslot = el('div');
     gslot.addEventListener('redraw', e => { e.stopPropagation(); redraw(); });
     const redraw = () => { ch = chart(res, cur, S.h, S.pre); gslot.replaceChildren(filters(res, cur, redraw), ch); if (cur && cur.avail > S.h) gslot.append(el('p', 'muted small', `I dag er dag ${cur.avail} – velg et lengre tidsrom for å se i dag-kurven helt fram.`)); const cc = cur ? compare(res, cur, A, T) : null; cslot.replaceChildren(...(cc ? [cc] : []));
@@ -379,12 +438,14 @@
       const c0 = el('td', 'l'); c0.append(el('b', null, dmy(r.d))); if (lab) c0.append(el('span', 'muted small sub2', lab)); if (r === cur) c0.append(el('span', 'small sub2', 'pågår'));
       tr.append(c0, el('td', null, price(r.base))); for (const h of [30, 91, 182, 365]) tr.append(el('td', cls(r.hz[h]), r.hz[h] == null ? '…' : pct(r.hz[h])));
       tr.append(el('td', 'down', r.full ? pct(r.mn) : '…'), el('td', null, r.full ? r.mnD : '…'));
-      if (r !== cur) { tr.tabIndex = 0; const tg = () => { S.sel.has(r.d) ? S.sel.delete(r.d) : S.sel.add(r.d); redraw(); }; tr.addEventListener('click', tg); tr.addEventListener('keydown', ev => { if (ev.key === 'Enter') tg(); }); }
+      if (r !== cur) { tr.tabIndex = 0; const tg = () => { S.sel.has(r.d) ? S.sel.delete(r.d) : S.sel.add(r.d); redraw(); if (tl._focus) tl._focus(r.d0); if (tl._marks) tl._marks(); }; tr.addEventListener('click', tg); tr.addEventListener('keydown', ev => { if (ev.key === 'Enter') tg(); }); }
       lt.append(tr); }
     const lw = el('div', 'tw'); lw.append(lt); lc.append(lw, el('p', 'muted small', 'Trykk på en rad for å velge den i grafen (eller bruk år-knappene over grafen). «…» = ikke gått lang nok tid ennå. Tilfeller tett i tid påvirkes av de samme markedsforholdene og er ikke helt uavhengige.'));
+    const tl = timeline(m, e, res, A); gslot.addEventListener('redraw', () => { if (tl._marks) tl._marks(); });
     redraw();
     const hc = S.ev === 'halving' ? halvCard(m, S.a, A) : null;
-    box.replaceChildren(head, ...(hc ? [hc] : []), stc, gc, cslot, lc, el('div', 'note', 'Historikk viser hva som skjedde – ikke hva som vil skje. Ikke kjøps- eller salgsråd.'));
+    if (!box._l) { box._l = 1; box.addEventListener('redraw', ev2 => { ev2.stopPropagation(); if (box._rd) box._rd(); }); } box._rd = redraw;
+    box.replaceChildren(head, tl, gc, stc, cslot, ...(hc ? [hc] : []), lc, el('div', 'note', 'Historikk viser hva som skjedde – ikke hva som vil skje. Ikke kjøps- eller salgsråd.'));
   }
   window.EVENTS = { render, _S: S, _study: study, _search: search, _halv: halvCycles };
 })();

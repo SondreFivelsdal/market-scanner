@@ -112,8 +112,15 @@ const CRISES = [
   ['2011-08-05', 'USAs kredittvurdering nedgraderes (eurokrisen)', 'finans'], ['2014-02-24', 'Mt. Gox stanser (kryptobørs)', 'krypto'], ['2016-06-23', 'Brexit-avstemningen', 'politikk'],
   ['2017-09-04', 'Kina forbyr ICO-er', 'krypto'], ['2020-03-12', 'Covid-krakket', 'finans'], ['2021-05-19', 'Kryptokrakk (Kina strammer inn)', 'krypto'],
   ['2022-02-24', 'Russland invaderer Ukraina', 'krig'], ['2022-05-09', 'Terra/Luna kollapser', 'krypto'], ['2022-11-08', 'FTX kollapser', 'krypto'],
-  ['2023-03-10', 'Silicon Valley Bank kollapser', 'finans'], ['2023-10-07', 'Hamas angriper Israel', 'krig'], ['2025-04-02', '«Liberation Day»-tollene', 'politikk'], ['2025-06-13', 'Israel angriper Iran', 'krig'] ];
+  ['2023-03-10', 'Silicon Valley Bank kollapser', 'finans'], ['2023-03-19', 'Credit Suisse reddes av UBS', 'finans'], ['2022-06-12', 'Celsius fryser uttak', 'krypto'], ['2023-10-07', 'Hamas angriper Israel', 'krig'], ['2025-04-02', '«Liberation Day»-tollene', 'politikk'], ['2025-06-13', 'Israel angriper Iran', 'krig'] ];
 
+// Regulering (krypto) og pengepolitikk utover renta. Datoene er offentlig kjente kunngjøringer/søksmål.
+const REG = [['2017-09-04', 'Kina forbyr ICO-er'], ['2020-12-22', 'SEC saksøker Ripple (XRP)'], ['2023-06-05', 'SEC saksøker Binance'], ['2023-06-06', 'SEC saksøker Coinbase'], ['2023-07-13', 'Domstol: XRP-salg på børs er ikke verdipapirsalg'], ['2024-01-10', 'SEC godkjenner spot-Bitcoin-ETF-er'], ['2025-03-06', 'USA oppretter strategisk Bitcoin-reserve']];
+const QE = [['2008-11-25', 'QE1 kunngjøres'], ['2010-11-03', 'QE2 kunngjøres'], ['2012-09-13', 'QE3 kunngjøres'], ['2020-03-15', 'Nullrente og ny QE (covid)']];
+const QT = [['2017-10-01', 'QT1: Fed begynner å krympe balansen'], ['2022-06-01', 'QT2: Fed begynner å krympe balansen']];
+const CPI = [['2022-07-13', 'KPI i USA på 9,1 % (toppen) offentliggjøres']];
+// viktighet 1–3 (brukes til sortering og markører); alt som ikke står her er 2, kalender og måneder er 1
+const IMP = { halving: 3, fed_first_hike: 3, fed_first_cut: 3, fed_last_hike: 3, btc_top: 3, btc_bottom: 3, crisis_fin: 3, crisis_crypto: 3, crypto_etf: 3, rp_under: 3, rp_over: 3, spx_bear: 3, midterm_day: 3, election_day: 3, fed_qe: 3, fed_qt: 3, crisis_war: 3, w200_under: 3, ath: 3 };
 // Store børsnoteringer (første handelsdag)
 const IPOS = [['2004-08-19', 'Google'], ['2012-05-18', 'Facebook'], ['2014-09-19', 'Alibaba'], ['2019-05-10', 'Uber'], ['2020-12-09', 'Airbnb'], ['2021-04-14', 'Coinbase'], ['2023-09-14', 'Arm'], ['2026-06-12', 'SpaceX']];
 // Fed: styringsrente (målrente til 2008, øvre grense etter). Én verdi per beslutning.
@@ -137,10 +144,23 @@ function crossZero(S, dir, minSide) { const out = []; for (let i = 1; i < S.leng
 // ------------------------------------------------------------------ hovedberegning
 const ASSETS = [
   { k: 'BTC', name: 'Bitcoin', kind: 'krypto' }, { k: 'ETH', name: 'Ethereum', kind: 'krypto' }, { k: 'XRP', name: 'XRP', kind: 'krypto' }, { k: 'SOL', name: 'Solana', kind: 'krypto' }, { k: 'ADA', name: 'Cardano', kind: 'krypto' },
-  { k: 'SPX', name: 'S&P 500', kind: 'aksjer' }, { k: 'NDX', name: 'Nasdaq', kind: 'aksjer' }, { k: 'GOLD', name: 'Gull', kind: 'råvarer' }, { k: 'OIL', name: 'Olje (WTI)', kind: 'råvarer' } ];
-const CATS = { fed: 'Renter og Fed', syklus: 'Syklus og kalender', teknisk: 'Tekniske brudd', makro: 'Makro og kriser' };
+  { k: 'SPX', name: 'S&P 500', kind: 'aksjer' }, { k: 'NDX', name: 'Nasdaq', kind: 'aksjer' }, { k: 'OSEBX', name: 'Oslo Børs', kind: 'aksjer' },
+  { k: 'GOLD', name: 'Gull', kind: 'råvarer' }, { k: 'SILVER', name: 'Sølv', kind: 'råvarer' }, { k: 'OIL', name: 'Olje (WTI)', kind: 'råvarer' } ];
+const CATS = { fed: 'Renter og Fed', syklus: 'Syklus og valg', kalender: 'Kalender og helligdager', maned: 'Måneder', onchain: 'On-chain (Bitcoin)', krypto: 'Kryptomilepæler', teknisk: 'Tekniske brudd', makro: 'Makro og kriser' };
+// ------------------------------------------------------------------ kalender
+const nthWd = (y, m, wd, n) => { const f = new Date(Date.UTC(y, m, 1)).getUTCDay(); return Date.UTC(y, m, 1 + ((wd - f + 7) % 7) + 7 * (n - 1)) / DAY; }; // n-te ukedag (0 = søndag) i måned m (0–11)
+const lastWd = (y, m, wd) => { const L = new Date(Date.UTC(y, m + 1, 0)); return Date.UTC(y, m, L.getUTCDate() - ((L.getUTCDay() - wd + 7) % 7)) / DAY; };
+function easter(y) { const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451), mo = Math.floor((h + l - 7 * m + 114) / 31), da = ((h + l - 7 * m + 114) % 31) + 1; return Date.UTC(y, mo - 1, da) / DAY; }
+const CNY = { 2010: '02-14', 2011: '02-03', 2012: '01-23', 2013: '02-10', 2014: '01-31', 2015: '02-19', 2016: '02-08', 2017: '01-28', 2018: '02-16', 2019: '02-05', 2020: '01-25', 2021: '02-12', 2022: '02-01', 2023: '01-22', 2024: '02-10', 2025: '01-29', 2026: '02-17', 2027: '02-06', 2028: '01-26' };
+const MONTHS = ['januar', 'februar', 'mars', 'april', 'mai', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'desember'];
+const MONTHS_EN = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+// kryptomilepæler (dato, navn)
+const CRYPTO_MS = [['2013-11-18', 'Senathøring i USA – «legitime» bruksområder'], ['2017-12-17', 'CME lanserer Bitcoin-futures'], ['2020-03-12', 'Covid-krakket («Black Thursday»)'], ['2020-08-11', 'MicroStrategy kjøper Bitcoin'], ['2021-02-08', 'Tesla kjøper Bitcoin'],
+  ['2021-04-14', 'Coinbase børsnoteres'], ['2021-05-12', 'Tesla stopper Bitcoin-betaling'], ['2021-05-21', 'Kina slår ned på mining'], ['2021-09-07', 'El Salvador: Bitcoin som lovlig betalingsmiddel'], ['2021-10-19', 'Første Bitcoin-futures-ETF (BITO)'],
+  ['2022-09-15', 'Ethereum «The Merge»'], ['2023-06-15', 'BlackRock søker om spot-ETF'], ['2024-01-11', 'Spot-Bitcoin-ETF-er starter handel'], ['2024-07-23', 'Spot-Ether-ETF-er starter handel'], ['2025-03-06', 'USA oppretter strategisk Bitcoin-reserve'], ['2025-07-18', 'GENIUS Act (stablecoin-lov) signert']];
+const ETFS = [['2021-10-19', 'Bitcoin-futures-ETF (BITO)'], ['2024-01-11', 'Spot-Bitcoin-ETF-er'], ['2024-07-23', 'Spot-Ether-ETF-er']];
 
-function compute({ assets, macro, now = Date.now() }) {
+function compute({ assets, macro, cm = null, now = Date.now() }) {
   const today = dayOf(now), cat = [];
   const add = (o) => { if (o.dates) o.dates = o.dates.filter(d => d <= today).map(iso); cat.push(o); };
   // Fed
@@ -184,7 +204,39 @@ function compute({ assets, macro, now = Date.now() }) {
   add({ id: 'crisis_war', cat: 'makro', name: 'Krig og geopolitiske sjokk', syn: ['krig', 'war', 'geopolitikk', 'invasjon', 'angrep', 'iran', 'ukraina'], desc: 'Starten på kriger og store angrep (liste i koden).', dates: cr(['krig']).map(c => D(c[0])), labels: Object.fromEntries(cr(['krig']).map(c => [c[0], c[1]])) });
   add({ id: 'crisis_crypto', cat: 'makro', name: 'Kryptokriser', syn: ['ftx', 'luna', 'mt gox', 'kryptokrise', 'collapse'], desc: 'Store kollapser og forbud i krypto (liste i koden).', dates: cr(['krypto']).map(c => D(c[0])), labels: Object.fromEntries(cr(['krypto']).map(c => [c[0], c[1]])) });
   add({ id: 'crisis_pol', cat: 'makro', name: 'Politiske sjokk', syn: ['brexit', 'toll', 'tariffs', 'politikk'], desc: 'Store politiske sjokk (liste i koden).', dates: cr(['politikk']).map(c => D(c[0])), labels: Object.fromEntries(cr(['politikk']).map(c => [c[0], c[1]])) });
+  add({ id: 'reg', cat: 'krypto', name: 'Regulering og SEC (krypto)', syn: ['sec', 'regulering', 'ripple', 'xrp', 'søksmål', 'lawsuit', 'binance', 'coinbase', 'gensler'], desc: 'Store regulatoriske hendelser for krypto (liste i koden).', dates: REG.map(c => D(c[0])), labels: Object.fromEntries(REG.map(c => [c[0], c[1]])) });
+  add({ id: 'fed_qe', cat: 'fed', name: 'Kvantitative lettelser (QE) kunngjøres', syn: ['qe', 'quantitative easing', 'pengetrykking', 'likviditet', 'liquidity'], desc: 'Fed kunngjør store obligasjonskjøp (liste i koden).', dates: QE.map(c => D(c[0])), labels: Object.fromEntries(QE.map(c => [c[0], c[1]])) });
+  add({ id: 'fed_qt', cat: 'fed', name: 'Kvantitativ innstramming (QT) starter', syn: ['qt', 'quantitative tightening', 'balanse', 'likviditet'], desc: 'Fed begynner å krympe balansen (liste i koden).', dates: QT.map(c => D(c[0])), labels: Object.fromEntries(QT.map(c => [c[0], c[1]])) });
+  add({ id: 'cpi_peak', cat: 'makro', name: 'Inflasjonstoppen offentliggjøres', syn: ['cpi', 'inflasjon', 'inflation', 'kpi', 'peak inflation'], desc: 'Dagen da toppen i amerikansk KPI ble offentliggjort (vet man først i etterkant at det var toppen).', hindsight: true, dates: CPI.map(c => D(c[0])), labels: Object.fromEntries(CPI.map(c => [c[0], c[1]])) });
   add({ id: 'ipo', cat: 'makro', name: 'Store børsnoteringer (IPO)', syn: ['ipo', 'børsnotering', 'spacex', 'coinbase', 'listing', 'anthropic'], desc: 'De største og mest omtalte børsnoteringene. Bruk «Før hendelsen» for å se hvordan markedet beveget seg inn mot noteringen.', dates: IPOS.map(c => D(c[0])), labels: Object.fromEntries(IPOS.map(c => [c[0], c[1]])) });
+  // kalender og helligdager (USA og Norge), fra 1950
+  const cal = (id, name, syn, desc, f, cat = 'kalender') => add({ id, cat, name, syn, desc, dates: years(() => true).map(f) });
+  cal('thanksgiving', 'Thanksgiving (USA)', ['thanksgiving', 'takkefest', 'høsttakkefest', 'november'], 'Fjerde torsdag i november. Amerikanske børser er stengt, og handelen er tynn i dagene rundt.', y => nthWd(y, 10, 4, 4));
+  cal('black_friday', 'Black Friday', ['black friday', 'svart fredag', 'handel'], 'Dagen etter Thanksgiving. Halv handelsdag på Wall Street.', y => nthWd(y, 10, 4, 4) + 1);
+  cal('christmas', 'Julaften', ['jul', 'christmas', 'julaften', 'santa'], '24. desember.', y => D(y + '-12-24'));
+  cal('santa', 'Santa Claus-rallyet starter', ['santa claus rally', 'santa rally', 'julerally', 'jul'], 'Kjent sesongmønster: de 5 siste handelsdagene i året og de 2 første i det nye. Starter her ca. 24. desember.', y => D(y + '-12-24'));
+  cal('newyear', 'Nyttår (1. januar)', ['nyttår', 'new year', 'januar', 'årsskifte'], 'Første dag i året.', y => D(y + '-01-01'));
+  cal('easter', 'Påske (1. påskedag)', ['påske', 'easter'], 'Første påskedag (vestlig kirkeår). Börsene er stengt langfredag.', easter);
+  cal('july4', 'Uavhengighetsdagen i USA (4. juli)', ['4th of july', 'fourth of july', '4. juli', 'independence day'], '4. juli. Amerikanske børser er stengt.', y => D(y + '-07-04'));
+  cal('halloween', 'Halloween (31. oktober)', ['halloween', 'halloween indicator', 'sell in may'], '31. oktober. «Halloween-indikatoren»: aksjer har historisk gått bedre fra november til april enn fra mai til oktober.', y => D(y + '-10-31'));
+  cal('sell_may', '«Sell in May» (1. mai)', ['sell in may', 'selg i mai', 'mai', 'sommer'], 'Kjent ordtak: selg i mai og gå (kom tilbake etter Halloween).', y => D(y + '-05-01'));
+  cal('labor_day', 'Labor Day (USA)', ['labor day', 'september'], 'Første mandag i september. Regnes som slutten på sommeren i markedene.', y => nthWd(y, 8, 1, 1));
+  cal('jackson_hole', 'Jackson Hole-møtet (ca.)', ['jackson hole', 'powell', 'fed', 'august'], 'Fed-konferansen i Jackson Hole. Tilnærmet: siste torsdag i august (de fleste år).', y => lastWd(y, 7, 4));
+  cal('triple_witch', 'Trippel heksing (desember)', ['triple witching', 'opsjonsforfall', 'heksing'], 'Store opsjons- og futuresforfall: tredje fredag i desember.', y => nthWd(y, 11, 5, 3));
+  cal('17mai', '17. mai', ['17. mai', 'nasjonaldag', 'norge'], 'Norges nasjonaldag. Oslo Børs er stengt.', y => D(y + '-05-17'));
+  add({ id: 'cny', cat: 'kalender', name: 'Kinesisk nyttår', syn: ['chinese new year', 'kinesisk nyttår', 'lunar new year', 'kina'], desc: 'Første dag i det kinesiske månekalenderåret (tabell 2010–2028). Kinesiske markeder er stengt en uke.', dates: Object.entries(CNY).map(([y, md]) => D(y + '-' + md)) });
+  // måneder: første dag i hver måned (sesongmønstre)
+  MONTHS.forEach((mn, i) => add({ id: 'm' + String(i + 1).padStart(2, '0'), cat: 'maned', name: mn[0].toUpperCase() + mn.slice(1) + ' starter', syn: [mn, MONTHS_EN[i], 'måned', 'sesong', 'seasonality', i === 9 ? 'uptober' : i === 8 ? 'septembereffekt' : mn],
+    desc: `1. ${mn} hvert år. Velg «Dager etter» = 30 for å se hvordan ${mn} pleier å gå.`, dates: years(() => true).map(y => Date.UTC(y, i, 1) / DAY) }));
+  // kryptomilepæler
+  add({ id: 'crypto_ms', cat: 'krypto', name: 'Store kryptonyheter og milepæler', syn: ['etf', 'tesla', 'microstrategy', 'merge', 'el salvador', 'kina', 'cme', 'reserve', 'milepæl', 'nyheter'], desc: 'Utvalgte store nyheter i kryptomarkedet (liste i koden).', dates: CRYPTO_MS.map(c => D(c[0])), labels: Object.fromEntries(CRYPTO_MS.map(c => [c[0], c[1]])) });
+  add({ id: 'crypto_etf', cat: 'krypto', name: 'Krypto-ETF-er starter handel', syn: ['etf', 'spot etf', 'blackrock', 'ibit', 'bito', 'godkjenning'], desc: 'Første handelsdag for nye typer krypto-ETF-er i USA.', dates: ETFS.map(c => D(c[0])), labels: Object.fromEntries(ETFS.map(c => [c[0], c[1]])) });
+  // on-chain: Bitcoin mot realisert pris (snittprisen alle bitcoins sist ble flyttet til). Fra Coin Metrics, Community-API.
+  if (cm && cm.length) { const rp = cm.filter(x => x.mvrv > 0 && x.mcap > 0 && x.sply > 0).map(x => ({ d: x.d, v: (x.mcap / x.mvrv / x.sply), r: x.mvrv })), rs = rp.map(x => ({ d: x.d, v: x.r - 1 }));
+    add({ id: 'rp_under', cat: 'onchain', name: 'Bitcoin faller under realisert pris', syn: ['realized price', 'realisert pris', 'mvrv', 'under realised', 'kapitulasjon'], desc: 'Kursen går under realisert pris (MVRV under 1) etter minst 180 dager over. Har historisk skjedd nær bunnene i bjørnemarkeder.', dates: crossZero(rs, -1, 180) });
+    add({ id: 'rp_over', cat: 'onchain', name: 'Bitcoin tilbake over realisert pris', syn: ['realized price', 'realisert pris', 'mvrv'], desc: 'Kursen går over realisert pris igjen (MVRV over 1) etter minst 60 dager under.', dates: crossZero(rs, 1, 60) });
+    add({ id: 'mvrv3', cat: 'onchain', name: 'MVRV over 3 (kurs 3× realisert pris)', syn: ['mvrv', 'overheated', 'overopphetet', 'topp'], desc: 'Kursen er minst 3 ganger realisert pris, første gang etter et halvt år under. Har historisk vært i overopphetede faser.', dates: threshold(rs.map(x => ({ d: x.d, v: x.v + 1 })), 3, 1, 180, 180) });
+    void rp; }
   // tekniske: per marked
   for (const T of TECH) { const per = {}; for (const A of ASSETS) { const S = assets[A.k] && assets[A.k].data; if (!S || S.length < 300) continue; per[A.k] = T.f(S).filter(d => d <= today).map(iso); }
     cat.push({ id: T.id, cat: 'teknisk', name: T.name, syn: T.syn, desc: T.desc, perAsset: per }); }
@@ -192,6 +244,7 @@ function compute({ assets, macro, now = Date.now() }) {
   const outA = {}; for (const A of ASSETS) { const S = assets[A.k] && assets[A.k].data; if (!S) continue;
     const t = [], c = []; let p = 0; for (const x of S) { t.push(x.d - p); p = x.d; c.push(+x.v.toPrecision(5)); }
     outA[A.k] = { name: A.name, kind: A.kind, src: assets[A.k].src, from: iso(S[0].d), to: iso(S[S.length - 1].d), t, c }; }
+  for (const e of cat) e.imp = IMP[e.id] || (e.cat === 'kalender' || e.cat === 'maned' ? 1 : 2);
   return { built: new Date(now).toISOString(), cats: CATS, assets: outA, order: ASSETS.map(a => a.k).filter(k => outA[k]), events: cat, fed: typeof fedNow !== 'undefined' ? fedNow : null, errors: macro.errors || {} };
 }
 
@@ -203,7 +256,9 @@ async function main() {
   for (const s of ['ETH', 'XRP', 'SOL', 'ADA']) put(s, await first([['Binance', () => binance(s)]]));
   put('SPX', await first([['Yahoo (^GSPC)', () => yahoo('^GSPC')], ['FRED (SP500)', () => fred('SP500')]]));
   put('NDX', await first([['Yahoo (^IXIC)', () => yahoo('^IXIC')], ['FRED (NASDAQCOM)', () => fred('NASDAQCOM')]]));
+  put('OSEBX', await first([['Yahoo (OSEBX.OL)', () => yahoo('OSEBX.OL')], ['Yahoo (^OSEAX)', () => yahoo('^OSEAX')]]));
   put('GOLD', await first([['Yahoo (GC=F)', () => yahoo('GC=F')]]));
+  put('SILVER', await first([['Yahoo (SI=F)', () => yahoo('SI=F')]]));
   put('OIL', await first([['FRED (DCOILWTICO)', () => fred('DCOILWTICO')], ['Yahoo (CL=F)', () => yahoo('CL=F')]]));
   const m = async (k, list) => { const r = await first(list); if (r.err) { macro.errors[k] = r.err; console.log(k, 'mangler', r.err); } else { macro[k] = r.data; console.log(k, r.src, r.data.length); } };
   await m('fedTar', [['FRED (DFEDTAR)', () => fred('DFEDTAR')]]); await m('fedTarU', [['FRED (DFEDTARU)', () => fred('DFEDTARU')]]);
@@ -211,10 +266,11 @@ async function main() {
   await m('hy', [['FRED (BAMLH0A0HYM2)', () => fred('BAMLH0A0HYM2')]]);
   await m('curve', [['FRED (T10Y2Y)', () => fred('T10Y2Y', true)]]);
   await m('dxy', [['Yahoo (DX-Y.NYB)', () => yahoo('DX-Y.NYB')], ['FRED (DTWEXBGS)', () => fred('DTWEXBGS')]]);
-  const out = compute({ assets, macro });
+  const CY = require('./cycle.js'); let cm = null;
+  try { cm = MOCK ? mock('coinmetrics') : await CY.fetchCM(get); console.log('Coin Metrics', cm.length); } catch (e) { console.log('Coin Metrics mangler', e.message); }
+  const out = compute({ assets, macro, cm });
   // Syklus-fanen (on-chain og sosial interesse hentes her, kursene gjenbrukes)
-  try { const CY = require('./cycle.js'); let cm = null, wiki = null;
-    try { cm = MOCK ? mock('coinmetrics') : await CY.fetchCM(get); console.log('Coin Metrics', cm.length); } catch (e) { console.log('Coin Metrics mangler', e.message); }
+  try { let wiki = null;
     try { wiki = MOCK ? mock('wiki') : await CY.fetchWiki(get); console.log('Wikipedia', wiki.length); } catch (e) { console.log('Wikipedia mangler', e.message); }
     const d = k => assets[k] && assets[k].data;
     const cy = CY.compute({ btc: d('BTC'), spx: d('SPX'), gold: d('GOLD'), oil: d('OIL'), cm, wiki });
