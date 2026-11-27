@@ -14,6 +14,7 @@
     vline: '<path d="M10 2v16" stroke="currentColor" stroke-width="1.8"/><circle cx="10" cy="10" r="2" fill="currentColor"/>',
     rect: '<rect x="3" y="5" width="14" height="10" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="3" cy="5" r="1.8" fill="currentColor"/><circle cx="17" cy="15" r="1.8" fill="currentColor"/>',
     measure: '<path d="M10 3v14M6 7l4-4 4 4M6 13l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"/>',
+    zoom: '<circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12.5 12.5L18 18M6 8.5h5M8.5 6v5" stroke="currentColor" stroke-width="1.6"/>',
     eye: '<path d="M2 10s3-5 8-5 8 5 8 5-3 5-8 5-8-5-8-5z" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="2.3" fill="currentColor"/>',
     eyeoff: '<path d="M2 10s3-5 8-5 8 5 8 5-3 5-8 5-8-5-8-5z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 17L17 3" stroke="currentColor" stroke-width="1.6"/>',
     magnet: '<path d="M5 3v7a5 5 0 0010 0V3h-3v7a2 2 0 01-4 0V3z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 5h3M12 5h3" stroke="currentColor" stroke-width="1.6"/>',
@@ -21,7 +22,7 @@
   };
   // verktøy i samme rekkefølge som i TradingView; null = skillelinje
   const TOOLS = [['cursor', 'Peker – flytt og velg tegninger (Esc)'], null, ['trend', 'Trendlinje – dra, eller trykk to ganger'], ['ray', 'Stråle – linje som fortsetter mot høyre'], ['hline', 'Horisontal linje – trykk én gang'], ['vline', 'Vertikal linje – trykk én gang'], null,
-    ['fib', 'Fibonacci-retracement – dra fra topp til bunn (eller omvendt)'], null, ['rect', 'Rektangel – dra fra hjørne til hjørne'], ['measure', 'Mål prisendring – dra for å se endring i % og antall lys'], null];
+    ['fib', 'Fibonacci-retracement – dra fra topp til bunn (eller omvendt)'], null, ['rect', 'Rektangel – dra fra hjørne til hjørne'], ['measure', 'Mål prisendring – dra for å se endring i % og antall lys'], null, ['zoom', 'Zoom inn – dra over tidsrommet du vil se (som i Grafana)']];
   const ONECLICK = { hline: 1, vline: 1 };
   let store = {}; try { store = JSON.parse(localStorage.getItem(LS) || '{}') || {}; } catch (e) { store = {}; }
   const persist = () => { try { localStorage.setItem(LS, JSON.stringify(store)); } catch (e) { /* ingen lagring */ } };
@@ -64,6 +65,7 @@
         if (d.type === 'trend') { mk('line', { x1: A.x, y1: A.y, x2: Bp.x, y2: Bp.y, stroke: col, 'stroke-width': 2 }, g); hit(g, d, `M${A.x} ${A.y} L${Bp.x} ${Bp.y}`); }
         if (d.type === 'ray') { const dx = Bp.x - A.x; let E = Bp; if (Math.abs(dx) > 0.5) { const xe = dx > 0 ? w : 0; E = { x: xe, y: A.y + (Bp.y - A.y) / dx * (xe - A.x) }; }
           mk('line', { x1: A.x, y1: A.y, x2: E.x, y2: E.y, stroke: col, 'stroke-width': 2 }, g); hit(g, d, `M${A.x} ${A.y} L${E.x} ${E.y}`); }
+        if (d.type === 'zoom') { const x1 = Math.min(A.x, Bp.x); mk('rect', { x: x1, y: 0, width: Math.abs(Bp.x - A.x), height: h, fill: css('--blue'), 'fill-opacity': 0.14, stroke: css('--blue'), 'stroke-opacity': 0.5 }, g); continue; }
         if (d.type === 'rect' || d.type === 'measure') { const x1 = Math.min(A.x, Bp.x), y1 = Math.min(A.y, Bp.y), rw = Math.abs(Bp.x - A.x), rh = Math.abs(Bp.y - A.y), upv = (d.b || d.a).p >= d.a.p;
           const c2 = d.type === 'rect' ? col : upv ? css('--up') : css('--down'); mk('rect', { x: x1, y: y1, width: rw, height: rh, fill: c2, 'fill-opacity': d.type === 'rect' ? 0.12 : 0.18, stroke: c2, 'stroke-width': d.type === 'rect' ? 1.5 : 1 }, g);
           if (d.type === 'measure') { const cx = x1 + rw / 2; mk('line', { x1: cx, x2: cx, y1: A.y, y2: Bp.y, stroke: c2, 'stroke-width': 1.5 }, g); mk('line', { x1: A.x, x2: Bp.x, y1: Bp.y, y2: Bp.y, stroke: c2, 'stroke-width': 1, 'stroke-dasharray': '3 3' }, g);
@@ -99,7 +101,9 @@
       else { S.pend.b = p; finish(S.pend); } render(); });
     layer.addEventListener('pointermove', e => { if (!S.pend) return; const { x, y } = local(e), p = ptAt(x, y, S.magnet); if (p) { S.pend.b = p; render(); } });
     layer.addEventListener('pointerup', e => { if (!S.pend || !S.down) return; S.down = false; const { x, y } = local(e); if (Math.hypot(x - S.dx, y - S.dy) > 8) finish(S.pend); });
-    function finish(d) { const nd = { id: Math.random().toString(36).slice(2, 9), type: d.type, a: d.a, b: d.b }; list().push(nd); persist(); S.pend = null; S.sel = nd.id; setTool('cursor'); render(); }
+    function finish(d) {
+      if (d.type === 'zoom') { S.pend = null; const ia = idxOfT(d.a.t), ib = idxOfT(d.b.t); if (ia != null && ib != null && Math.abs(ib - ia) >= 2) { ch.timeScale().setVisibleLogicalRange({ from: Math.min(ia, ib), to: Math.max(ia, ib) }); try { ch.priceScale('right').applyOptions({ autoScale: true }); } catch (x) { /* ok */ } } setTool('cursor'); render(); return; }
+      const nd = { id: Math.random().toString(36).slice(2, 9), type: d.type, a: d.a, b: d.b }; list().push(nd); persist(); S.pend = null; S.sel = nd.id; setTool('cursor'); render(); }
     // klikk utenfor en tegning fjerner valget; Delete sletter valgt tegning; Esc avbryter
     host.addEventListener('pointerdown', e => { if (S.tool === 'cursor' && !e.target.closest('.dshape') && S.sel) { S.sel = null; tbar(); render(); } }, true);
     const onKey = e => { if (!host.isConnected || host.offsetParent == null) return; const tg = e.target; if (tg && /INPUT|TEXTAREA|SELECT/.test(tg.tagName)) return;

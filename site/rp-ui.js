@@ -59,7 +59,7 @@
     mv.setData(w.map(r => ({ time: t(r), value: r[7] })));
     [[1, 'RP'], [2, ''], [3, '']].forEach(([p, ti]) => mv.createPriceLine({ price: p, color: css('--axis'), lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: ti }));
     let lock = false; const sync = (a, b) => a.timeScale().subscribeVisibleTimeRangeChange(r => { if (lock || !r) return; lock = true; try { b.timeScale().setVisibleRange(r); } catch (e) { /* ok */ } lock = false; }); sync(c1, c2); sync(c2, c1);
-    S.chs = [c1, c2]; S.w = w; setR();
+    S.chs = [c1, c2]; S.w = w; if (window.ZOOM) { ZOOM.attach(c1, top, { onReset: setR }); ZOOM.attach(c2, bot, { onReset: setR, quiet: true }); } setR();
   }
   function setR() { if (!S.chs.length || !S.w) return; const last = S.w[S.w.length - 1][0], n = { '2Å': 730, '4Å': 1461, '8Å': 2922, Alt: 1e6 }[S.rng]; S.chs[0].timeScale().setVisibleRange({ from: Math.max(S.w[0][0], last - n) * 86400, to: last * 86400 }); }
   window.RPUI = { render };

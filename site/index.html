@@ -109,11 +109,17 @@ button.mcell { cursor: pointer; } button.mcell:hover { background: var(--soft); 
 .evnum { display: inline-flex; align-items: center; gap: 4px; font-size: .82rem; color: var(--muted); } .evnum input { width: 64px; }
 .evtl { height: 260px; position: relative; }
 .evtip { position: absolute; top: 6px; z-index: 5; width: 250px; display: grid; gap: 2px; font-size: .8rem; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; box-shadow: 0 6px 20px rgba(0,0,0,.3); pointer-events: none; }
+/* Bitcoin-syklus: grafene to og to ved siden av hverandre på store skjermer */
+@media (min-width: 1100px) { #syklus-in { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } #syklus-in > :first-child, #syklus-in > details, #syklus-in > .note, #syklus-in > p { grid-column: 1 / -1; } }
+/* oversikt: nylige hendelser */
+.recent { display: grid; } .recent button { display: grid; grid-template-columns: 4.2rem minmax(0, 1fr) auto; gap: 8px; align-items: center; text-align: left; font: inherit; font-size: .84rem; color: var(--fg); background: none; border: 0; border-top: 1px solid var(--line); padding: 6px 2px; cursor: pointer; }
+.recent button:first-child { border-top: 0; } .recent button:hover { background: var(--soft); } .recent .d { color: var(--muted); font-size: .76rem; } .recent .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .recent .r { text-align: right; font-size: .78rem; }
+.zbrush { position: absolute; top: 0; bottom: 28px; z-index: 6; pointer-events: none; background: color-mix(in srgb, var(--blue) 16%, transparent); border-left: 1px solid color-mix(in srgb, var(--blue) 60%, transparent); border-right: 1px solid color-mix(in srgb, var(--blue) 60%, transparent); }
 details.evdesc > summary { list-style: none; cursor: pointer; color: var(--muted); font-size: .86rem; } details.evdesc > summary::-webkit-details-marker { display: none; }
 .coin.on { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
 .coin .nm b { font-size: 1.05rem; } .coin .px { font-variant-numeric: tabular-nums; font-weight: 600; }
 .coin .ath { font-size: .9rem; color: var(--muted); text-align: right; }
-.pill { display: inline-flex; align-items: center; gap: 6px; font-weight: 650; font-size: .92rem; padding: 4px 12px; border-radius: 999px; white-space: nowrap; justify-self: start; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-weight: 650; font-size: .8rem; padding: 2px 9px; border-radius: 999px; white-space: nowrap; justify-self: start; }
 .pill.up { background: var(--up-bg); } .pill.down { background: var(--down-bg); } .pill.warn { background: var(--warn-bg); }
 .zlayer { position: absolute; inset: 0; pointer-events: none; z-index: 2; overflow: hidden; }
 .zone { position: absolute; left: 0; border-top: 1px solid; border-bottom: 1px solid; }
@@ -197,21 +203,21 @@ svg.gauge { width: 100%; max-width: 280px; height: auto; }
 .likerow { display: grid; grid-template-columns: 1fr auto auto auto; gap: 4px 14px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; background: var(--panel); font: inherit; color: inherit; text-align: left; width: 100%; font-variant-numeric: tabular-nums; }
 .likerow:hover { border-color: var(--axis); } .likerow[aria-pressed="true"] { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
 .sub { height: 120px; min-width: 0; }
-.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .88rem; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .78rem; color: var(--muted); }
 .legend i { display: inline-block; width: 18px; height: 0; border-top: 3px solid; vertical-align: middle; margin-right: 6px; }
 .hover { font-size: .9rem; font-variant-numeric: tabular-nums; min-height: 1.4em; color: var(--muted); }
 .explain { display: grid; gap: 12px; }
 .explain .pt { display: grid; grid-template-columns: 2rem 1fr; gap: 10px; align-items: start; }
-.explain .ic { width: 2rem; height: 2rem; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: var(--soft); }
-.note { border-left: 4px solid var(--warn); background: var(--warn-bg); padding: 10px 14px; border-radius: 0 var(--r) var(--r) 0; font-size: .92rem; }
+.explain .ic { width: 1.6rem; height: 1.6rem; font-size: .8rem; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: var(--soft); }
+.note { border-left: 3px solid var(--warn); background: var(--warn-bg); padding: 7px 12px; border-radius: 0 var(--r) var(--r) 0; font-size: .82rem; }
 details.more { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); }
-details.more > summary { cursor: pointer; padding: 14px 18px; font-weight: 600; }
-details.more > .in { padding: 0 18px 18px; display: grid; gap: 14px; }
+details.more > summary { cursor: pointer; padding: 9px 14px; font-weight: 600; font-size: .88rem; color: var(--muted); } details.more[open] > summary { color: var(--fg); }
+details.more > .in { padding: 0 14px 14px; display: grid; gap: 10px; font-size: .88rem; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { font-size: .9rem; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
-table.t { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: .92rem; }
-table.t th { text-align: right; color: var(--muted); font-weight: 600; padding: 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-table.t td { text-align: right; padding: 9px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.t { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: .84rem; }
+table.t th { text-align: right; color: var(--muted); font-weight: 600; font-size: .74rem; text-transform: uppercase; letter-spacing: .03em; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.t td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 table.t .l { text-align: left; }
 .tw { overflow-x: auto; }
 .range { display: grid; gap: 10px; }
@@ -232,13 +238,13 @@ table.t .l { text-align: left; }
 .scen { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .sc { border-radius: var(--r); padding: 12px 14px; display: grid; gap: 2px; background: var(--soft); min-width: 0; }
 .sc.bad { background: var(--down-bg); } .sc.good { background: var(--up-bg); }
-.sc .k { font-size: .85rem; color: var(--muted); } .sc .v { font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; } .sc .p { font-size: .92rem; font-weight: 600; }
-.big { font-size: 1.15rem; line-height: 1.45; }
+.sc .k { font-size: .74rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); } .sc .v { font-size: 1.1rem; font-weight: 700; font-variant-numeric: tabular-nums; } .sc .p { font-size: .92rem; font-weight: 600; }
+.big { font-size: .98rem; line-height: 1.45; }
 .trust { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .dots { display: inline-flex; gap: 4px; } .dots i { width: 14px; height: 14px; border-radius: 50%; background: var(--line); display: inline-block; } .dots i.on { background: var(--up); }
 @media (max-width: 640px) { .scen { grid-template-columns: 1fr; } }
 footer { font-size: .82rem; color: var(--muted); display: grid; gap: 4px; }
-.pill.big { font-size: 1.35rem; padding: 6px 18px; }
+.pill.big { font-size: 1.05rem; padding: 4px 14px; }
 .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; flex: 0 0 auto; background: var(--axis); }
 .dot.up { background: var(--up); } .dot.down { background: var(--down); } .dot.warn { background: var(--warn); }
 .mlist { display: grid; gap: 0; }
@@ -385,6 +391,7 @@ footer a { color: inherit; }
   </footer>
 </div>
 <script src="klines.js"></script>
+<script src="zoom.js"></script>
 <script src="draw.js"></script>
 <script src="ta.js"></script>
 <script src="terminal.js"></script>

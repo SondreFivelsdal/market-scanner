@@ -393,6 +393,7 @@
         if (!best || bd > 8) { tip.hidden = true; return; } tip.hidden = false; tip.replaceChildren(el('b', null, best.n), el('span', 'muted', `${dmy(best.d)} · ${best.c}`), el('span', null, best.t)); tip.style.left = Math.min(host.clientWidth - 260, Math.max(0, p.point.x + 12)) + 'px'; });
       ch.subscribeClick(p => { if (!p || p.time == null) return; let best = null, bd = 1e9; for (const r of res.rows) { const dd = Math.abs(r.d0 * 86400 - p.time); if (dd < bd) { bd = dd; best = r; } } if (best && bd < 86400 * 20 && best.avail >= 730) { soloSel(S.sel, best.d); host.dispatchEvent(new CustomEvent('redraw', { bubbles: true })); marks(); } });
       const last = T.t[T.t.length - 1]; ch.timeScale().setVisibleRange({ from: Math.max(T.t[0], (res.rows.length ? res.rows[0].d0 : last) - 120) * 86400, to: last * 86400 });
+      if (window.ZOOM) ZOOM.attach(ch, host, { onReset: () => ch.timeScale().fitContent() });
       card._focus = d => ch.timeScale().setVisibleRange({ from: (d - S.pre - 30) * 86400, to: Math.min(last, d + S.h + 30) * 86400 });
       card._marks = marks;
     });

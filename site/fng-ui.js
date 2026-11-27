@@ -45,7 +45,7 @@
     [25, 50, 75].forEach(p => fg.createPriceLine({ price: p, color: css('--axis'), lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '' }));
     if (S.B) { const btc = c1.addLineSeries({ color: css('--fg'), lineWidth: 2, priceLineVisible: false, priceFormat: { type: 'price', precision: 0, minMove: 1 } }); btc.setData(S.B.filter(b => b.t >= S.F[0].d * DAY).map(b => ({ time: Math.floor(b.t / DAY) * 86400, value: b.c }))); }
     let lock = false; const sync = (a, b2) => a.timeScale().subscribeVisibleTimeRangeChange(r => { if (lock || !r) return; lock = true; try { b2.timeScale().setVisibleRange(r); } catch (e) { /* utenfor data */ } lock = false; }); sync(c1, c2); sync(c2, c1);
-    S.chs = [c1, c2]; S.ch = c2; setRange();
+    S.chs = [c1, c2]; S.ch = c2; if (window.ZOOM) { ZOOM.attach(c1, top, { onReset: setRange }); ZOOM.attach(c2, bot, { onReset: setRange, quiet: true }); } setRange();
   }
   function setRange() { if (!S.ch || !S.F) return; const last = S.F[S.F.length - 1].d, n = { '1Å': 365, '3Å': 1095, Alt: 1e5 }[S.rng]; S.ch.timeScale().setVisibleRange({ from: Math.max(S.F[0].d, last - n) * 86400, to: last * 86400 }); }
 

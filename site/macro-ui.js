@@ -111,7 +111,7 @@
       [e.r90, e.r180].forEach(v => r.append(el('td', v == null ? 'muted' : v > 0 ? 'up' : 'down', v == null ? 'venter' : pct(v, 0)))); tb.append(r); });
     const w = el('div', 'tw'); w.append(tb); card.append(w);
     card.append(el('p', 'muted small', 'Få tilfeller – se på dette som eksempler, ikke som en sikker regel. Makroklimaet bruker bare data som var kjent den dagen.'));
-    return card;
+    const d = el('details', 'more'), inn = el('div', 'in'); inn.append(...[...card.childNodes].slice(1)); d.append(el('summary', null, 'Tester av de store trendlinjene – og hva makroklimaet var da'), inn); return d;
   }
   function method(m) {
     const d = el('details', 'more'); d.append(el('summary', null, 'Hvordan er makroklimaet regnet ut?')); const inn = el('div', 'in');

@@ -91,9 +91,9 @@
       const rg = el('div', 'tgroup'); [[182, '6M'], [365, '1Å'], [1095, '3Å'], [3000, 'Alt']].forEach(([n, l]) => { const b = el('button', 'tb', l); b.type = 'button'; b.dataset.n = n; b.addEventListener('click', () => { S.rng = n; range(); }); rg.append(b); });
       const sh = el('div', 'tgroup'); [['e200', '200d', '--orange'], ['rp', 'Realisert pris', '#d6336c'], ['w200', '200W', '--purple']].forEach(([k, l]) => { const b = el('button', 'tb', l); b.type = 'button'; b.dataset.k = k; b.addEventListener('click', () => { S.show[k] = !S.show[k]; lines(); }); sh.append(b); });
       ctl.append(rg, sh); hd.append(ttl, ctl); const host = el('div', 'dhost'); c.append(hd, host);
-      const side = el('div', 'card tight'); side.id = 'd-rel'; box.append(c, side); S.host = host; S.rg = rg; S.sh = sh; }
+      const side = el('div', 'card tight'); side.id = 'd-rel'; const rec = el('div', 'card tight'); rec.id = 'd-rec'; const right = el('div', 'stack'); right.append(side, rec); box.append(c, right); S.host = host; S.rg = rg; S.sh = sh; }
     if (!S.ch && S.K.BTC && window.LightweightCharts) mkChart();
-    lines(); drawRel();
+    lines(); drawRel(); drawRecent();
   }
   function mkChart() { const LW = window.LightweightCharts;
     S.ch = LW.createChart(S.host, { autoSize: true, localization: { locale: 'nb-NO', dateFormat: 'dd.MM.yy' }, layout: { background: { type: 'solid', color: css('--panel') }, textColor: css('--muted'), fontFamily: getComputedStyle(document.body).fontFamily, fontSize: 11 },
@@ -101,7 +101,7 @@
     const up = css('--up'), dn = css('--down');
     S.cs = S.ch.addCandlestickSeries({ upColor: up, downColor: dn, wickUpColor: up, wickDownColor: dn, borderVisible: false, priceFormat: { type: 'price', precision: 0, minMove: 1 } });
     const ln = (c, w, st = 0, t = 0) => S.ch.addLineSeries({ color: c, lineWidth: w, lineStyle: st, lineType: t, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
-    S.ls = { e200: ln(css('--orange'), 2), rp: ln('#d6336c', 2, 0, 1), w200: ln(css('--purple'), 2, 2, 1) }; }
+    S.ls = { e200: ln(css('--orange'), 2), rp: ln('#d6336c', 2, 0, 1), w200: ln(css('--purple'), 2, 2, 1) }; if (window.ZOOM) ZOOM.attach(S.ch, S.host, { onReset: range }); }
   function lines() {
     if (!S.ch) return; const B = S.K.BTC, ts = t => Math.floor(t / 1000);
     if (S.cs._n !== B.length) { S.cs._n = B.length; S.cs.setData(B.map(b => ({ time: ts(b.t), open: b.o, high: b.h, low: b.l, close: b.c })));
@@ -123,6 +123,24 @@
     const hd = el('div', 'row'); hd.append(el('h3', null, 'Relativ styrke'), el('span', 'muted small', '30 d mot BTC'));
     const tw = el('div', 'tw'); tw.append(t); box.replaceChildren(hd, tw);
   }
+  // nylige hendelser (siste 30 dager) fra Historikk, med hvordan BTC gikk 30 dager etter de tidligere gangene
+  function drawRecent() {
+    const box = document.getElementById('d-rec'); if (!box) return; const hd = el('div', 'row'); hd.append(el('h3', null, 'Nylig i markedet'), el('span', 'muted small', 'BTC 30 d etter, før'));
+    const d = dash.data('events'), m = d && d.status === 'ok' ? d.data : null; if (!m) { box.replaceChildren(hd, el('p', 'muted small', d && d.status === 'error' ? 'Hendelsesdata er ikke tilgjengelige.' : 'Henter …')); return; }
+    if (box._b === m.built) return; box._b = m.built;
+    const A = m.assets.BTC, T = { t: [], c: A ? A.c : [] }; if (A) { let p = 0; for (const x of A.t) { p += x; T.t.push(p); } }
+    const at = dd => { let lo = 0, hi = T.t.length - 1; if (!T.t.length || dd < T.t[0]) return -1; while (lo < hi) { const k = (lo + hi + 1) >> 1; if (T.t[k] <= dd) lo = k; else hi = k - 1; } return lo; };
+    const dOf = ds => Math.floor(Date.parse(ds + 'T00:00:00Z') / DAY), today = Math.floor(Date.now() / DAY), last = T.t[T.t.length - 1];
+    const seen = new Set(), rows = [];
+    for (const e of m.events) for (const ds of e.dates || []) { const d0 = dOf(ds); if (today - d0 < 0 || today - d0 > 30) continue; rows.push({ e, ds, d0 }); }
+    rows.sort((a, b) => b.d0 - a.d0 || (b.e.imp || 2) - (a.e.imp || 2));
+    const out = rows.filter(r => !seen.has(r.e.id) && seen.add(r.e.id)).slice(0, 7).map(r => {
+      const v = []; for (const ds of r.e.dates) { const d0 = dOf(ds); if (d0 + 30 > last) continue; const i = at(d0 - 1) + 1, j = at(d0 + 30); if (i < 0 || i >= T.t.length || j <= i) continue; v.push(T.c[j] / T.c[i] - 1); }
+      v.sort((a, b) => a - b); const md = v.length ? v[Math.floor((v.length - 1) / 2)] : null;
+      const b = el('button'); b.type = 'button'; b.title = `Åpne «${r.e.name}» i Historikk`; b.addEventListener('click', goTab('hendelser', { ev: r.e.id }));
+      const nm = (r.e.labels && r.e.labels[r.ds]) || r.e.name; b.append(el('span', 'd', new Date(r.d0 * DAY).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', timeZone: 'UTC' })), el('span', 'nm', nm), el('span', 'r ' + cls(md), md == null ? '–' : `${pct(md, 0)} · n=${v.length}`)); return b; });
+    const l = el('div', 'recent'); l.append(...out); box.replaceChildren(hd, out.length ? l : el('p', 'muted small', 'Ingen registrerte hendelser siste 30 dager.'));
+  }
   function drawInd() {
     const box = document.getElementById('d-ind'); box.className = 'dind'; const cy = dash.data('cycle'), C = cy && cy.status === 'ok' ? cy.data : null, mc = window.MACRO && MACRO.summary(), w = C && C.w ? C.w.slice(-156) : null, n = C && C.now;
     const zc = v => v == null ? '' : v > 0.8 ? 'down' : v < 0.2 ? 'up' : '';
@@ -137,6 +155,6 @@
     const hd = el('div', 'row'); hd.append(el('h3', null, 'Indikatorer'), el('span', 'muted small', 'Bitcoin · ukesdata · trykk for detaljer'));
     const g = el('div', 'mstrip ind'); g.append(...items); box.replaceChildren(hd, g);
   }
-  function render() { if (typeof KL === 'undefined' || typeof RG === 'undefined') return; dash.data('cycle'); load(); draw(); }
+  function render() { if (typeof KL === 'undefined' || typeof RG === 'undefined') return; dash.data('cycle'); dash.data('events'); load(); draw(); }
   window.DASHUI = { render, _S: S, regime };
 })();

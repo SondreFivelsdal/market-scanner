@@ -10,13 +10,14 @@
   const DAY = 864e5, PAL = ['#f7931a', '#4c8dff', '#26a69a', '#a78bfa', '#ef5350', '#e0a33a', '#9ca3af', '#d6336c', '#2aa198', '#c084fc', '#84cc16'];
   const RNG = { '1M': 30, '3M': 91, '6M': 182, YTD: 'ytd', '1Å': 365, '3Å': 1095, '5Å': 1826, '10Å': 3652, Alt: 'all' };
   const FQ = { d: ['Daglig', 1], w: ['Ukentlig', 7], m: ['Månedlig', 30] };
-  const S = { sel: ['BTC', 'GOLD', 'SPX', 'NDX'], rng: '1Å', fq: 'w', log: true, ser: {}, ch: null, rc: null, sig: null };
+  const S = { cust: null, sel: ['BTC', 'GOLD', 'SPX', 'NDX'], rng: '1Å', fq: 'w', log: true, ser: {}, ch: null, rc: null, sig: null };
   try { const s = JSON.parse(localStorage.getItem('ms-cmp') || '{}'); if (Array.isArray(s.sel) && s.sel.length) S.sel = s.sel; if (RNG[s.rng]) S.rng = s.rng; if (FQ[s.fq]) S.fq = s.fq; if (s.log != null) S.log = s.log; } catch (e) { /* ingen lagring */ }
   const save = () => { try { localStorage.setItem('ms-cmp', JSON.stringify({ sel: S.sel, rng: S.rng, fq: S.fq, log: S.log })); } catch (e) { /* ignorer */ } };
   function ser(m, k) { if (S.ser[k]) return S.ser[k]; const A = m.assets[k]; if (!A) return null; const t = []; let p = 0; for (const x of A.t) { p += x; t.push(p); } return (S.ser[k] = { t, c: A.c, name: A.name, kind: A.kind, src: A.src }); }
   const at = (T, d) => { let lo = 0, hi = T.t.length - 1; if (d < T.t[0]) return -1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (T.t[m] <= d) lo = m; else hi = m - 1; } return lo; };
   // periodens start (dag) ut fra siste felles dag
   function span(m) { const T = S.sel.map(k => ser(m, k)).filter(Boolean); if (!T.length) return null; const end = Math.min(...T.map(x => x.t[x.t.length - 1])), first = Math.max(...T.map(x => x.t[0])), r = RNG[S.rng];
+    if (S.cust) return { from: Math.max(first, S.cust.from), end: Math.min(end, S.cust.end) };
     const from = r === 'all' ? first : r === 'ytd' ? Date.UTC(new Date(end * DAY).getUTCFullYear(), 0, 1) / DAY - 1 : end - r; return { from: Math.max(first, from), end }; }
   // avkastning per periode (dag/uke/måned), bare perioder der alle valgte har kurs
   function buckets(T, sp, fq) { const out = new Map(); for (let i = 0; i < T.t.length; i++) { const d = T.t[i]; if (d < sp.from || d > sp.end) continue; const k = fq === 'd' ? d : fq === 'w' ? Math.floor((d + 3) / 7) : new Date(d * DAY).getUTCFullYear() * 12 + new Date(d * DAY).getUTCMonth(); out.set(k, T.c[i]); } return out; }
@@ -27,17 +28,18 @@
     const root = document.getElementById('cmp-in'); if (!root) return; const d = dash.data('events'), m = d && d.status === 'ok' ? d.data : null;
     if (!m) { root.replaceChildren(el('p', 'muted', d && d.status === 'error' ? 'Kursdataene er ikke tilgjengelige akkurat nå.' : 'Henter kurser …')); return; }
     S.sel = S.sel.filter(k => m.assets[k]); if (!S.sel.length) S.sel = m.order.slice(0, 2);
-    const sig = `${m.built}|${S.sel.join(',')}|${S.rng}|${S.fq}|${S.log}`; if (sig === S.sig && root.childElementCount) return; S.sig = sig;
+    const sig = `${m.built}|${S.sel.join(',')}|${S.rng}|${S.fq}|${S.log}|${S.cust ? S.cust.from + '-' + S.cust.end : ''}`; if (sig === S.sig && root.childElementCount) return; S.sig = sig;
     // velger: grupper, flervalg
     const pick = el('div', 'cmpsel'), KN = { krypto: 'Krypto', aksjer: 'Indekser', 'råvarer': 'Metaller og råvarer' };
     for (const [kd, kn] of Object.entries(KN)) { const ks = m.order.filter(k => m.assets[k].kind === kd); if (!ks.length) continue; const g = el('div', 'tgroup'); g.append(el('span', 'glab', kn));
       ks.forEach(k => { const on = S.sel.includes(k), b = el('button', 'tb', m.assets[k].name); b.type = 'button'; b.setAttribute('aria-pressed', on ? 'true' : 'false'); if (on) { const i = S.sel.indexOf(k); b.style.boxShadow = `inset 0 -2px 0 ${PAL[i % PAL.length]}`; }
         b.addEventListener('click', () => { if (on) { if (S.sel.length > 1) S.sel = S.sel.filter(x => x !== k); } else if (S.sel.length < 8) S.sel = [...S.sel, k]; save(); render(); }); g.append(b); }); pick.append(g); }
     const missing = ['OSEBX', 'SILVER'].filter(k => !m.assets[k]); if (missing.length) pick.append(el('span', 'muted small', `Ikke tilgjengelig ennå: ${missing.map(k => ({ OSEBX: 'Oslo Børs', SILVER: 'Sølv' })[k]).join(', ')} (hentes ved neste dataoppdatering).`));
-    const bar = el('div', 'tbar'), rg = el('div', 'tgroup'); Object.keys(RNG).forEach(r => { const b = el('button', 'tb', r); b.type = 'button'; b.setAttribute('aria-pressed', r === S.rng ? 'true' : 'false'); b.addEventListener('click', () => { S.rng = r; save(); render(); }); rg.append(b); });
+    const bar = el('div', 'tbar'), rg = el('div', 'tgroup'); Object.keys(RNG).forEach(r => { const b = el('button', 'tb', r); b.type = 'button'; b.setAttribute('aria-pressed', !S.cust && r === S.rng ? 'true' : 'false'); b.addEventListener('click', () => { S.rng = r; S.cust = null; save(); render(); }); rg.append(b); });
     const fq = el('div', 'tgroup'); Object.entries(FQ).forEach(([k, [l]]) => { const b = el('button', 'tb', l); b.type = 'button'; b.title = 'Avkastningsperiode for volatilitet og korrelasjon'; b.setAttribute('aria-pressed', k === S.fq ? 'true' : 'false'); b.addEventListener('click', () => { S.fq = k; save(); render(); }); fq.append(b); });
     const lg = el('button', 'tb', 'log'); lg.type = 'button'; lg.setAttribute('aria-pressed', S.log ? 'true' : 'false'); lg.addEventListener('click', () => { S.log = !S.log; save(); render(); });
-    bar.append(rg, el('span', 'tsep'), fq, el('span', 'grow'), lg);
+    const cu = el('span', 'muted small'); if (S.cust) { const x = el('button', 'tb', `Utsnitt: ${new Date(S.cust.from * DAY).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: '2-digit' })} – ${new Date(S.cust.end * DAY).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: '2-digit' })} ✕`); x.type = 'button'; x.setAttribute('aria-pressed', 'true'); x.title = 'Fjern utsnittet'; x.addEventListener('click', () => { S.cust = null; render(); }); cu.append(x); } else cu.textContent = 'Dra i grafen for å velge et utsnitt';
+    bar.append(rg, el('span', 'tsep'), fq, el('span', 'grow'), cu, lg);
     const sp = span(m); const card = el('div', 'card tight'); const host = el('div', 'cmpchart'); card.append(bar, host);
     if (!sp) { root.replaceChildren(pick, card); return; }
     // statistikk og korrelasjon
@@ -62,6 +64,7 @@
     T.forEach((x, i) => { const i0 = at(x, sp.from - 1) + 1, i1 = at(x, sp.end), b = x.c[i0], s = S.ch.addLineSeries({ color: PAL[i % PAL.length], lineWidth: 2, priceLineVisible: false, title: x.name });
       const d = []; for (let j = i0; j <= i1; j++) d.push({ time: x.t[j] * 86400, value: x.c[j] / b }); s.setData(d); if (i === 0) s.createPriceLine({ price: 1, color: css('--axis'), lineWidth: 1, lineStyle: 2, axisLabelVisible: false }); });
     S.ch.timeScale().fitContent();
+    if (window.ZOOM) ZOOM.attach(S.ch, host, { onZoom: (a, b) => { if (a == null || b == null) return; S.cust = { from: Math.floor(a / 86400), end: Math.ceil(b / 86400) }; render(); }, onReset: () => { if (S.cust) { S.cust = null; render(); } } });
   }
   window.CMP = { render, _corr: corr };
 })();
