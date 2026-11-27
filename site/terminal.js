@@ -128,14 +128,30 @@
   }
 
   // ---------------------------------------------------------------- coin-liste
+  // oppsett per coin (dagslys, lukkede): fersk trendendring, test av 200-dagerslinja, brudd ut av 30-dagersrange, RSI-ytterpunkt, uvanlig volum
+  function setups(s) { const c0 = T.kl[key(s, '1d')]; if (!c0 || !c0.B || c0.B.length < 230) return { sc: 0, tags: [] }; const B = c0.B, e = closedEnd(B); if (e < 220) return { sc: 0, tags: [] };
+    const c = B.map(b => b.c), E = RG.ema(c, 200), r = RG.rsi(c)[e], out = []; let cr = null;
+    for (let i = e; i > e - 10; i--) if ((c[i] > E[i]) !== (c[i - 1] > E[i - 1])) { cr = i; break; }
+    if (cr != null) out.push([4, c[e] > E[e] ? 'Ny opptrend' : 'Ny nedtrend', c[e] > E[e] ? 'up' : 'down', `Krysset 200-dagerslinja for ${e - cr} d siden`]);
+    else if (Math.abs(c[e] / E[e] - 1) <= 0.03) out.push([3, 'Ved 200d', 'warn', `${pct(c[e] / E[e] - 1)} fra 200-dagerslinja`]);
+    let hi = -Infinity, lo = Infinity; for (let i = e - 30; i < e; i++) { hi = Math.max(hi, B[i].h); lo = Math.min(lo, B[i].l); }
+    if (c[e] > hi) out.push([3, 'Brudd opp 30d', 'up', 'Dagslukk over høyeste kurs siste 30 dager']); else if (c[e] < lo) out.push([3, 'Brudd ned 30d', 'down', 'Dagslukk under laveste kurs siste 30 dager']);
+    if (r != null && (r <= 30 || r >= 70)) out.push([2, `RSI ${Math.round(r)}`, r <= 30 ? 'up' : 'down', r <= 30 ? 'Oversolgt (RSI under 30)' : 'Overkjøpt (RSI over 70)']);
+    let va = 0; for (let i = e - 20; i < e; i++) va += B[i].v || 0; va /= 20; const vr = va ? (B[e].v || 0) / va : 0; if (vr >= 1.8) out.push([2, `Volum ${nf(vr, { maximumFractionDigits: 1 })}×`, '', 'Dagsvolum mot snittet siste 20 dager']);
+    const t = trend(s); if (t && t.dd != null && t.dd > -0.05) out.push([1, 'Nær rekord', 'up', `${pct0(t.dd)} fra høyeste dagslukk`]);
+    out.sort((a, b) => b[0] - a[0]); return { sc: out.reduce((a, x) => a + x[0], 0), tags: out }; }
   function drawCoins() {
-    const box = document.getElementById('tm-coins'); if (!box) return;
-    box.replaceChildren(...list().map(s => { const L = live(s), t = trend(s), dk = T.kl[key(s, '1d')], [lab, c] = TR(t, dk && !dk.B && dk.err);
+    const box = document.getElementById('tm-coins'); if (!box) return; const ws = T.wsort || 'setup';
+    const hd = document.getElementById('tm-wsort'); if (hd && !hd.dataset.b) { hd.dataset.b = 1; hd.className = 'tgroup'; hd.title = 'Sortering'; [['setup', 'Oppsett'], ['std', 'Standard']].forEach(([k, l]) => { const b = el('button', 'tb', l); b.type = 'button'; b.dataset.k = k; b.addEventListener('click', () => { T.wsort = k; drawCoins(); }); hd.append(b); }); }
+    if (hd) hd.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.k === ws ? 'true' : 'false'));
+    const L = list().map((s, i) => ({ s, i, u: setups(s) })); if (ws === 'setup') L.sort((a, b) => b.u.sc - a.u.sc || a.i - b.i);
+    box.replaceChildren(...L.map(({ s, u }) => { const L = live(s), t = trend(s), dk = T.kl[key(s, '1d')], [lab, c] = TR(t, dk && !dk.B && dk.err);
       const b = el('button', 'coin' + (s === T.sym ? ' on' : '')); b.type = 'button'; b.setAttribute('aria-pressed', s === T.sym ? 'true' : 'false');
       const nm = el('span', 'nm'); nm.append(el('b', null, names()[s] || s), el('span', 'muted', ' ' + s));
       const px = el('span', 'px'); px.append(document.createTextNode(L && L.p ? price(L.p) + ' ' : 'Ikke tilgjengelig '), el('span', cls(L && L.chg) + ' small', L && L.chg != null ? pct(L.chg / 100) : ''));
       const ath = el('span', 'ath', t && t.dd != null ? (t.dd > -0.005 ? 'På rekordnivå' : `${pct0(t.dd)} fra toppen`) : '');
-      b.append(nm, px, el('span', 'pill ' + c, lab), ath);
+      const tg = el('span', 'tags'); u.tags.slice(0, 2).forEach(x => { const q = el('span', 'tg ' + x[2], x[1]); q.title = x[3]; tg.append(q); });
+      b.append(nm, px, el('span', 'pill ' + c, lab), ath); if (u.tags.length) b.append(tg); b.title = u.tags.map(x => x[3]).join(' · ');
       b.addEventListener('click', () => { T.sym = s; dash.setParams({ coin: s }); drawCoins(); drawBar(); drawDetail(true); const d = document.getElementById('tm-detail'); if (d.getBoundingClientRect().top > window.innerHeight * 0.5) d.scrollIntoView({ behavior: 'smooth' }); });
       return b; }));
   }

@@ -11,7 +11,7 @@
     const tab = tabNow();
     document.querySelectorAll('#faner [data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === tab ? 'true' : 'false'));
     TABS.forEach(t => { document.getElementById(t).hidden = t !== tab; });
-    try { if (tab === 'terminal' && window.TERM) TERM.render(); if (tab === 'historikk' && window.HIST) HIST.render(); if (tab === 'makro' && window.MACRO) MACRO.render(); if (tab === 'hendelser' && window.EVENTS) EVENTS.render(); if (tab === 'syklus' && window.CYCLE) CYCLE.render(); if (tab === 'ta' && window.TAUI) TAUI.render(); if (tab === 'fng' && window.FNG) FNG.render(); if (tab === 'dash' && window.DASHUI) DASHUI.render(); if (tab === 'cmp' && window.CMP) CMP.render(); if (tab === 'syklus' && window.RPUI) RPUI.render(); } catch (e) { console.error(e); }
+    try { if (tab === 'terminal' && window.TERM) TERM.render(); if (tab === 'historikk' && window.HIST) HIST.render(); if (tab === 'historikk' && window.TRIG) TRIG.render(); if (tab === 'makro' && window.MACRO) MACRO.render(); if (tab === 'hendelser' && window.EVENTS) EVENTS.render(); if (tab === 'syklus' && window.CYCLE) CYCLE.render(); if (tab === 'ta' && window.TAUI) TAUI.render(); if (tab === 'fng' && window.FNG) FNG.render(); if (tab === 'dash' && window.DASHUI) DASHUI.render(); if (tab === 'cmp' && window.CMP) CMP.render(); if (tab === 'syklus' && window.RPUI) RPUI.render(); } catch (e) { console.error(e); }
   }
   dash.onData(draw); draw();
 })();

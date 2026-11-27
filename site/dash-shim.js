@@ -21,7 +21,7 @@
   const css = getComputedStyle(document.documentElement);
   const colors = () => ['--c1', '--c2', '--c3'].map(v => css.getPropertyValue(v).trim() || '#3b82f6');
   window.dash = {
-    data(name) { if (!store[name]) { if (!FILES[name]) return { status: 'missing', data: null }; fetchSet(name); } return store[name]; },
+    data(name, o) { if (!store[name]) { if (o && o.peek) return null; if (!FILES[name]) return { status: 'missing', data: null }; fetchSet(name); } return store[name]; }, // peek: ikke start lasting
     params: () => ({ ...params }),
     setParams(p) { params = { ...params, ...p }; const s = new URLSearchParams(params).toString(); history.replaceState(null, '', '#' + s); schedule(); },
     setLink() {},
